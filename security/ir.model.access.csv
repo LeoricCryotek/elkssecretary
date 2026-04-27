@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_secretary_dashboard_user,elks.secretary.dashboard.user,elkssecretary.model_elks_secretary_dashboard,group_elkssecretary_user,1,1,1,1

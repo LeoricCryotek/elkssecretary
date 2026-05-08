@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Treasury Session — Form
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_treasury_session_form" model="ir.ui.view">
+        <field name="name">elks.treasury.session.form</field>
+        <field name="model">elks.treasury.session</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_add_till"
+                            string="Add Till"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_add_safe"
+                            string="Count Safe"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_finalize"
+                            string="Finalize Session"
+                            type="object"
+                            class="btn-success"
+                            invisible="state != 'draft'"
+                            confirm="This will lock all counts. Continue?"/>
+                    <button name="action_cancel"
+                            string="Cancel"
+                            type="object"
+                            invisible="state != 'draft'"/>
+                    <button name="action_reset_draft"
+                            string="Reset to Draft"
+                            type="object"
+                            invisible="state != 'cancelled'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_change_slips"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-exchange">
+                            <field name="total_change_slips"
+                                   widget="statinfo"
+                                   string="Change Slips"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Session Info">
+                            <field name="session_date"/>
+                            <field name="session_type"/>
+                            <field name="counted_by"/>
+                            <field name="witnessed_by"/>
+                        </group>
+                        <group string="Totals">
+                            <field name="till_count"/>
+                            <field name="total_tills"/>
+                            <field name="total_safe"/>
+                            <field name="grand_total"
+                                   class="oe_subtotal_footer_separator"/>
+                            <field name="expected_bank"
+                                   invisible="state == 'done'"/>
+                            <field name="safe_variance"
+                                   decoration-danger="safe_variance &lt; 0"
+                                   decoration-success="safe_variance &gt;= 0"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Till Counts" name="tills">
+                            <field name="till_count_ids" nolabel="1">
+                                <list editable="bottom" create="0">
+                                    <field name="till_name"/>
+                                    <field name="total_bills"/>
+                                    <field name="total_rolled"/>
+                                    <field name="total_loose"/>
+                                    <field name="total"
+                                           decoration-bf="1"
+                                           sum="Total All Tills"/>
+                                    <field name="counted_by"/>
+                                    <field name="state"
+                                           widget="badge"
+                                           decoration-info="state == 'draft'"
+                                           decoration-success="state == 'done'"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Safe / Bank" name="safe">
+                            <field name="safe_count_ids" nolabel="1">
+                                <list editable="bottom" create="0">
+                                    <field name="total_bills"/>
+                                    <field name="total_rolled"/>
+                                    <field name="total_loose"/>
+                                    <field name="total"
+                                           decoration-bf="1"/>
+                                    <field name="counted_by"/>
+                                    <field name="state"
+                                           widget="badge"
+                                           decoration-info="state == 'draft'"
+                                           decoration-success="state == 'done'"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Change Slips" name="change_slips">
+                            <field name="change_slip_ids" nolabel="1">
+                                <list>
+                                    <field name="request_date"/>
+                                    <field name="requested_by"/>
+                                    <field name="amount" sum="Total"/>
+                                    <field name="denomination_given"/>
+                                    <field name="approved_by"/>
+                                    <field name="state"
+                                           widget="badge"
+                                           decoration-info="state == 'draft'"
+                                           decoration-success="state == 'done'"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="note" placeholder="Session notes..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Treasury Session — List
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_treasury_session_list" model="ir.ui.view">
+        <field name="name">elks.treasury.session.list</field>
+        <field name="model">elks.treasury.session</field>
+        <field name="arch" type="xml">
+            <list decoration-muted="state == 'cancelled'">
+                <field name="session_date"/>
+                <field name="session_type"/>
+                <field name="till_count"/>
+                <field name="total_tills" sum="Tills"/>
+                <field name="total_safe" sum="Safe"/>
+                <field name="grand_total" sum="Grand Total"
+                       decoration-bf="1"/>
+                <field name="safe_variance"
+                       decoration-danger="safe_variance &lt; 0"
+                       decoration-success="safe_variance &gt;= 0"/>
+                <field name="counted_by"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-success="state == 'done'"
+                       decoration-muted="state == 'cancelled'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Treasury Session — Search
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_treasury_session_search" model="ir.ui.view">
+        <field name="name">elks.treasury.session.search</field>
+        <field name="model">elks.treasury.session</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="session_date"/>
+                <field name="counted_by"/>
+                <filter string="In Progress" name="in_progress"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter string="Finalized" name="finalized"
+                        domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter string="End of Day" name="end_of_day"
+                        domain="[('session_type', '=', 'end_of_day')]"/>
+                <filter string="This Month" name="this_month"
+                        domain="[('session_date', '&gt;=',
+                                  (context_today() - relativedelta(day=1)).strftime('%%Y-%%m-%%d')),
+                                 ('session_date', '&lt;',
+                                  (context_today() + relativedelta(months=1, day=1)).strftime('%%Y-%%m-%%d'))]"/>
+                <filter string="Group by Date" name="group_date"
+                        context="{'group_by': 'session_date:month'}"/>
+                <filter string="Group by Type" name="group_type"
+                        context="{'group_by': 'session_type'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Actions
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="action_treasury_sessions" model="ir.actions.act_window">
+        <field name="name">Count Sessions</field>
+        <field name="res_model">elks.treasury.session</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_in_progress': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Start a new Treasury Count Session
+            </p>
+            <p>
+                Count out your tills and safe at end of shift,
+                shift change, or for special events.
+            </p>
+        </field>
+    </record>
+
+</odoo>

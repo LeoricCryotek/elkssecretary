@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Change Slip — Form
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_change_slip_form" model="ir.ui.view">
+        <field name="name">elks.change.slip.form</field>
+        <field name="model">elks.change.slip</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_complete"
+                            string="Mark Complete"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_cancel"
+                            string="Cancel"
+                            type="object"
+                            invisible="state != 'draft'"/>
+                    <button name="action_reset_draft"
+                            string="Reset to Draft"
+                            type="object"
+                            invisible="state != 'cancelled'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Request">
+                            <field name="request_date"/>
+                            <field name="requested_by"/>
+                            <field name="requested_by_user_id"/>
+                            <field name="amount"/>
+                        </group>
+                        <group string="Processing">
+                            <field name="approved_by"/>
+                            <field name="session_id"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="denomination_received"
+                                   placeholder="What was turned in — e.g. '1x $50 bill'"/>
+                        </group>
+                        <group>
+                            <field name="denomination_given"
+                                   placeholder="What was given — e.g. '2x $20, 1x $10 roll of quarters'"/>
+                        </group>
+                    </group>
+                    <field name="note" placeholder="Additional notes..."/>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Change Slip — List
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_change_slip_list" model="ir.ui.view">
+        <field name="name">elks.change.slip.list</field>
+        <field name="model">elks.change.slip</field>
+        <field name="arch" type="xml">
+            <list decoration-muted="state == 'cancelled'">
+                <field name="request_date"/>
+                <field name="requested_by"/>
+                <field name="amount" sum="Total"/>
+                <field name="denomination_given"/>
+                <field name="approved_by"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-success="state == 'done'"
+                       decoration-muted="state == 'cancelled'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Change Slip — Search
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_change_slip_search" model="ir.ui.view">
+        <field name="name">elks.change.slip.search</field>
+        <field name="model">elks.change.slip</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="requested_by"/>
+                <field name="approved_by"/>
+                <filter string="Draft" name="draft"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter string="Completed" name="completed"
+                        domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter string="Today" name="today"
+                        domain="[('request_date_only', '=',
+                                  context_today().strftime('%%Y-%%m-%%d'))]"/>
+                <filter string="This Month" name="this_month"
+                        domain="[('request_date_only', '&gt;=',
+                                  (context_today() - relativedelta(day=1)).strftime('%%Y-%%m-%%d')),
+                                 ('request_date_only', '&lt;',
+                                  (context_today() + relativedelta(months=1, day=1)).strftime('%%Y-%%m-%%d'))]"/>
+                <filter string="Group by Date" name="group_date"
+                        context="{'group_by': 'request_date_only'}"/>
+                <filter string="Group by Person" name="group_person"
+                        context="{'group_by': 'requested_by'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Actions
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="action_change_slips" model="ir.actions.act_window">
+        <field name="name">Change Slips</field>
+        <field name="res_model">elks.change.slip</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_today': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Record a Change Slip
+            </p>
+            <p>
+                Track cash change requests from the house bank.
+                Print slips for the manual log.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_change_slips_all" model="ir.actions.act_window">
+        <field name="name">All Change Slips</field>
+        <field name="res_model">elks.change.slip</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>

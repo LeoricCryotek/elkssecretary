@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Safe Count — Form  (identical layout to till count)
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_safe_count_form" model="ir.ui.view">
+        <field name="name">elks.safe.count.form</field>
+        <field name="model">elks.safe.count</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_populate_denominations"
+                            string="Fill All Denominations"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_done"
+                            string="Mark Done"
+                            type="object"
+                            class="btn-success"
+                            invisible="state != 'draft'"/>
+                    <button name="action_reset_draft"
+                            string="Re-open"
+                            type="object"
+                            invisible="state != 'done'"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Safe / Bank Count</h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="session_id"/>
+                            <field name="session_date"/>
+                            <field name="counted_by"/>
+                        </group>
+                        <group>
+                            <field name="total_bills"/>
+                            <field name="total_rolled"/>
+                            <field name="total_loose"/>
+                            <field name="total"
+                                   class="oe_subtotal_footer_separator"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Denominations" name="denominations">
+                            <field name="denomination_ids" nolabel="1">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="category"
+                                           decoration-bf="1"/>
+                                    <field name="denomination"/>
+                                    <field name="quantity"/>
+                                    <field name="face_value"/>
+                                    <field name="subtotal" sum="Total"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="note" placeholder="Notes about this safe count..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Safe Count — List
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_safe_count_list" model="ir.ui.view">
+        <field name="name">elks.safe.count.list</field>
+        <field name="model">elks.safe.count</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="session_date"/>
+                <field name="total_bills" sum="Bills"/>
+                <field name="total_rolled" sum="Rolled"/>
+                <field name="total_loose" sum="Loose"/>
+                <field name="total" sum="Grand Total"
+                       decoration-bf="1"/>
+                <field name="counted_by"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-success="state == 'done'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_safe_counts" model="ir.actions.act_window">
+        <field name="name">Safe Counts</field>
+        <field name="res_model">elks.safe.count</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>

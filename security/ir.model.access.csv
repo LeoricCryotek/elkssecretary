@@ -1,2 +1,16 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_secretary_dashboard_user,elks.secretary.dashboard.user,elkssecretary.model_elks_secretary_dashboard,group_elkssecretary_user,1,1,1,1
+access_treasury_session_user,elks.treasury.session.user,elkssecretary.model_elks_treasury_session,group_elkssecretary_user,1,1,1,0
+access_treasury_session_secretary,elks.treasury.session.secretary,elkssecretary.model_elks_treasury_session,group_elkssecretary_secretary,1,1,1,1
+access_till_count_user,elks.till.count.user,elkssecretary.model_elks_till_count,group_elkssecretary_user,1,1,1,0
+access_till_count_secretary,elks.till.count.secretary,elkssecretary.model_elks_till_count,group_elkssecretary_secretary,1,1,1,1
+access_safe_count_user,elks.safe.count.user,elkssecretary.model_elks_safe_count,group_elkssecretary_user,1,1,1,0
+access_safe_count_secretary,elks.safe.count.secretary,elkssecretary.model_elks_safe_count,group_elkssecretary_secretary,1,1,1,1
+access_denomination_line_user,elks.denomination.line.user,elkssecretary.model_elks_denomination_line,group_elkssecretary_user,1,1,1,0
+access_denomination_line_secretary,elks.denomination.line.secretary,elkssecretary.model_elks_denomination_line,group_elkssecretary_secretary,1,1,1,1
+access_change_slip_user,elks.change.slip.user,elkssecretary.model_elks_change_slip,group_elkssecretary_user,1,1,1,0
+access_change_slip_secretary,elks.change.slip.secretary,elkssecretary.model_elks_change_slip,group_elkssecretary_secretary,1,1,1,1
+access_bank_change_request_user,elks.bank.change.request.user,elkssecretary.model_elks_bank_change_request,group_elkssecretary_user,1,1,1,0
+access_bank_change_request_secretary,elks.bank.change.request.secretary,elkssecretary.model_elks_bank_change_request,group_elkssecretary_secretary,1,1,1,1
+access_bank_change_line_user,elks.bank.change.line.user,elkssecretary.model_elks_bank_change_line,group_elkssecretary_user,1,1,1,0
+access_bank_change_line_secretary,elks.bank.change.line.secretary,elkssecretary.model_elks_bank_change_line,group_elkssecretary_secretary,1,1,1,1

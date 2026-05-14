@@ -1,70 +1,61 @@
 # -*- coding: utf-8 -*-
-"""Denomination detail line for till and safe counts.
+"""Denomination Line — shared denomination definitions and counting line model.
 
-Each line represents a quantity of a single denomination (bills, rolled
-coins, or loose coins).  The face value is looked up from a constant map
-and the subtotal is computed automatically.
+Used by till counts, safe counts, and change slips to track quantities
+of each denomination (bills, rolled coins, loose coins).
 """
 from odoo import api, fields, models
 
-# ── denomination catalogue ──────────────────────────────────────────
+
+# ── shared constants ────────────────────────────────────────────
 DENOMINATION_SELECTION = [
-    # Bills
-    ('bill_100', '$100 Bills'),
-    ('bill_50', '$50 Bills'),
-    ('bill_20', '$20 Bills'),
-    ('bill_10', '$10 Bills'),
-    ('bill_5', '$5 Bills'),
-    ('bill_2', '$2 Bills'),
-    ('bill_1', '$1 Bills'),
-    # Rolled Coins
-    ('roll_quarter', 'Quarters — Rolled ($10)'),
-    ('roll_dime', 'Dimes — Rolled ($5)'),
-    ('roll_nickel', 'Nickels — Rolled ($2)'),
-    ('roll_penny', 'Pennies — Rolled ($0.50)'),
-    # Loose Coins
-    ('coin_dollar', '$1 Coins'),
-    ('coin_half', '50¢ Pieces'),
-    ('coin_quarter', 'Quarters'),
-    ('coin_dime', 'Dimes'),
-    ('coin_nickel', 'Nickels'),
-    ('coin_penny', 'Pennies'),
+    ('100', '$100 Bill'),
+    ('50', '$50 Bill'),
+    ('20', '$20 Bill'),
+    ('10', '$10 Bill'),
+    ('5', '$5 Bill'),
+    ('2', '$2 Bill'),
+    ('1', '$1 Bill'),
+    ('half_dollar', 'Half Dollar'),
+    ('quarter', 'Quarter'),
+    ('dime', 'Dime'),
+    ('nickel', 'Nickel'),
+    ('penny', 'Penny'),
 ]
 
 DENOMINATION_VALUES = {
-    'bill_100': 100.00,
-    'bill_50': 50.00,
-    'bill_20': 20.00,
-    'bill_10': 10.00,
-    'bill_5': 5.00,
-    'bill_2': 2.00,
-    'bill_1': 1.00,
-    'roll_quarter': 10.00,
-    'roll_dime': 5.00,
-    'roll_nickel': 2.00,
-    'roll_penny': 0.50,
-    'coin_dollar': 1.00,
-    'coin_half': 0.50,
-    'coin_quarter': 0.25,
-    'coin_dime': 0.10,
-    'coin_nickel': 0.05,
-    'coin_penny': 0.01,
+    '100': 100.00,
+    '50': 50.00,
+    '20': 20.00,
+    '10': 10.00,
+    '5': 5.00,
+    '2': 2.00,
+    '1': 1.00,
+    'half_dollar': 0.50,
+    'quarter': 0.25,
+    'dime': 0.10,
+    'nickel': 0.05,
+    'penny': 0.01,
 }
 
-DENOM_CATEGORY = {
-    'bill_100': 'bills', 'bill_50': 'bills', 'bill_20': 'bills',
-    'bill_10': 'bills', 'bill_5': 'bills', 'bill_2': 'bills',
-    'bill_1': 'bills',
-    'roll_quarter': 'rolled', 'roll_dime': 'rolled',
-    'roll_nickel': 'rolled', 'roll_penny': 'rolled',
-    'coin_dollar': 'loose', 'coin_half': 'loose',
-    'coin_quarter': 'loose', 'coin_dime': 'loose',
-    'coin_nickel': 'loose', 'coin_penny': 'loose',
+CATEGORY_SELECTION = [
+    ('bill', 'Bills'),
+    ('rolled', 'Rolled Coin'),
+    ('loose', 'Loose Coin'),
+]
+
+# Standard coin roll quantities
+ROLL_QUANTITIES = {
+    'half_dollar': 20,
+    'quarter': 40,
+    'dime': 50,
+    'nickel': 40,
+    'penny': 50,
 }
 
 
 class ElksDenominationLine(models.Model):
-    """Single denomination quantity for a till or safe count."""
+    """A single denomination counting line."""
 
     _name = "elks.denomination.line"
     _description = "Denomination Line"
@@ -72,17 +63,27 @@ class ElksDenominationLine(models.Model):
 
     sequence = fields.Integer(default=10)
 
+    # ── polymorphic parent links ────────────────────────────────
+    till_count_id = fields.Many2one(
+        "elks.till.count", ondelete="cascade", index=True,
+    )
+    safe_count_id = fields.Many2one(
+        "elks.safe.count", ondelete="cascade", index=True,
+    )
+    change_slip_id = fields.Many2one(
+        "elks.change.slip", ondelete="cascade", index=True,
+    )
+
+    # ── denomination data ───────────────────────────────────────
+    category = fields.Selection(
+        CATEGORY_SELECTION, string="Category", required=True,
+        default='bill',
+    )
     denomination = fields.Selection(
         DENOMINATION_SELECTION, required=True, string="Denomination",
     )
-    category = fields.Selection(
-        [('bills', 'Bills'),
-         ('rolled', 'Rolled Coins'),
-         ('loose', 'Loose Coins')],
-        compute="_compute_category", store=True,
-        string="Category",
-    )
     quantity = fields.Integer("Qty", default=0)
+
     face_value = fields.Float(
         "Face Value", compute="_compute_face_value",
         store=True, digits=(10, 2),
@@ -92,22 +93,9 @@ class ElksDenominationLine(models.Model):
         store=True, currency_field="currency_id",
     )
     currency_id = fields.Many2one(
-        "res.currency", default=lambda self: self.env.company.currency_id,
+        "res.currency",
+        default=lambda self: self.env.company.currency_id,
     )
-
-    # ── parent links (exactly one should be set) ─────────────────
-    till_count_id = fields.Many2one(
-        "elks.till.count", ondelete="cascade", index=True,
-    )
-    safe_count_id = fields.Many2one(
-        "elks.safe.count", ondelete="cascade", index=True,
-    )
-
-    # ── computes ─────────────────────────────────────────────────
-    @api.depends("denomination")
-    def _compute_category(self):
-        for line in self:
-            line.category = DENOM_CATEGORY.get(line.denomination, False)
 
     @api.depends("denomination")
     def _compute_face_value(self):

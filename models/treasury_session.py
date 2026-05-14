@@ -1,21 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Treasury Session — groups till counts and a safe count for one shift.
+"""Treasury Session — groups all counts and slips for a single night.
 
-A Treasury Session is the parent container for end-of-shift cash
-counting.  It holds one or more Till Counts (variable number depending
-on how many registers were open) plus a single Safe / Bank Count.
-The session computes a grand total across all counts and tracks the
-expected starting bank amount for variance detection.
+At the end of each business night the Secretary performs a full count:
+every till gets counted, the safe gets counted, and any change slips
+from the shift are attached.  The Treasury Session is the parent record
+that ties it all together and provides the summary view.
 """
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
 
 class ElksTreasurySession(models.Model):
-    """Parent container for a shift / event cash count."""
-
     _name = "elks.treasury.session"
-    _description = "Treasury Count Session"
+    _description = "Treasury Session"
     _order = "session_date desc, id desc"
     _inherit = ["mail.thread"]
 
@@ -26,189 +23,110 @@ class ElksTreasurySession(models.Model):
         "Session Date", required=True,
         default=fields.Date.context_today, index=True, tracking=True,
     )
-    session_type = fields.Selection([
-        ('end_of_day', 'End of Day'),
-        ('shift_change', 'Shift Change'),
-        ('event', 'Event'),
-        ('adhoc', 'Ad-Hoc'),
-    ], default='end_of_day', required=True, tracking=True,
-       string="Session Type",
+    secretary_id = fields.Many2one(
+        "res.users", string="Secretary",
+        default=lambda self: self.env.user, tracking=True,
     )
     state = fields.Selection([
-        ('draft', 'In Progress'),
-        ('done', 'Finalized'),
-        ('cancelled', 'Cancelled'),
+        ('draft', 'Open'),
+        ('done', 'Closed'),
     ], default='draft', tracking=True, index=True)
 
-    # ── child counts ─────────────────────────────────────────────
+    # ── child records ───────────────────────────────────────────
     till_count_ids = fields.One2many(
         "elks.till.count", "session_id", string="Till Counts",
     )
     safe_count_ids = fields.One2many(
-        "elks.safe.count", "session_id", string="Safe / Bank Counts",
+        "elks.safe.count", "session_id", string="Safe Counts",
     )
     change_slip_ids = fields.One2many(
         "elks.change.slip", "session_id", string="Change Slips",
     )
-
-    # ── expected bank amount ─────────────────────────────────────
-    expected_bank = fields.Monetary(
-        "Expected Bank Amount", currency_field="currency_id",
-        help="The expected starting amount in the safe/bank. "
-             "Used to calculate variance against the actual safe count.",
+    bank_change_ids = fields.One2many(
+        "elks.bank.change.request", "session_id",
+        string="Bank Change Requests",
     )
 
-    # ── totals ───────────────────────────────────────────────────
-    till_count = fields.Integer(
-        "# Tills", compute="_compute_totals", store=True,
-    )
+    # ── summary totals ──────────────────────────────────────────
     total_tills = fields.Monetary(
-        "All Tills Total", compute="_compute_totals", store=True,
+        "Total Tills", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     total_safe = fields.Monetary(
-        "Safe Total", compute="_compute_totals", store=True,
+        "Total Safe", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     total_change_slips = fields.Monetary(
-        "Change Slips Total", compute="_compute_totals", store=True,
+        "Total Change Slips", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     grand_total = fields.Monetary(
         "Grand Total", compute="_compute_totals", store=True,
         currency_field="currency_id",
-        help="Sum of all tills + safe.",
     )
-    safe_variance = fields.Monetary(
-        "Safe Variance", compute="_compute_totals", store=True,
-        currency_field="currency_id",
-        help="Safe total minus expected bank. "
-             "Positive = overage, negative = shortage.",
+    till_count = fields.Integer(
+        "# Tills", compute="_compute_totals", store=True,
     )
-
     currency_id = fields.Many2one(
-        "res.currency", default=lambda self: self.env.company.currency_id,
-    )
-
-    # ── people ───────────────────────────────────────────────────
-    counted_by = fields.Many2one(
-        "res.users", string="Counted By",
-        default=lambda self: self.env.user, tracking=True,
-    )
-    witnessed_by = fields.Many2one(
-        "res.users", string="Witnessed By", tracking=True,
+        "res.currency",
+        default=lambda self: self.env.company.currency_id,
     )
 
     note = fields.Text("Notes")
 
-    # ── computes ─────────────────────────────────────────────────
-    @api.depends("session_date", "session_type")
+    @api.depends("session_date")
     def _compute_name(self):
-        type_labels = dict(self._fields['session_type'].selection)
         for rec in self:
-            label = type_labels.get(rec.session_type, 'Count')
             if rec.session_date:
-                rec.name = f"Treasury — {label} — {rec.session_date}"
+                rec.name = f"Treasury Session — {rec.session_date}"
             else:
-                rec.name = f"Treasury — {label}"
+                rec.name = "New Treasury Session"
 
     @api.depends(
         "till_count_ids.total",
         "safe_count_ids.total",
-        "change_slip_ids.amount",
-        "change_slip_ids.state",
-        "expected_bank",
+        "change_slip_ids.total",
     )
     def _compute_totals(self):
         for rec in self:
+            tills = sum(rec.till_count_ids.mapped('total'))
+            safe = sum(rec.safe_count_ids.mapped('total'))
+            slips = sum(rec.change_slip_ids.mapped('total'))
+            rec.total_tills = tills
+            rec.total_safe = safe
+            rec.total_change_slips = slips
+            rec.grand_total = tills + safe
             rec.till_count = len(rec.till_count_ids)
-            rec.total_tills = sum(rec.till_count_ids.mapped('total'))
-            rec.total_safe = sum(rec.safe_count_ids.mapped('total'))
-            # Only completed change slips
-            done_slips = rec.change_slip_ids.filtered(
-                lambda s: s.state == 'done'
-            )
-            rec.total_change_slips = sum(done_slips.mapped('amount'))
-            rec.grand_total = rec.total_tills + rec.total_safe
-            rec.safe_variance = rec.total_safe - (rec.expected_bank or 0)
 
-    # ── actions ──────────────────────────────────────────────────
-    def action_add_till(self):
-        """Quick-add a new till count to this session."""
-        self.ensure_one()
-        till_num = len(self.till_count_ids) + 1
-        till = self.env['elks.till.count'].create({
-            'session_id': self.id,
-            'till_name': f"Till {till_num}",
-        })
-        till.action_populate_denominations()
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Till Count'),
-            'res_model': 'elks.till.count',
-            'res_id': till.id,
-            'view_mode': 'form',
-            'target': 'current',
-        }
-
-    def action_add_safe(self):
-        """Quick-add the safe count to this session."""
-        self.ensure_one()
-        if self.safe_count_ids:
-            # Open existing
-            return {
-                'type': 'ir.actions.act_window',
-                'name': _('Safe Count'),
-                'res_model': 'elks.safe.count',
-                'res_id': self.safe_count_ids[0].id,
-                'view_mode': 'form',
-                'target': 'current',
-            }
-        safe = self.env['elks.safe.count'].create({
-            'session_id': self.id,
-        })
-        safe.action_populate_denominations()
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Safe Count'),
-            'res_model': 'elks.safe.count',
-            'res_id': safe.id,
-            'view_mode': 'form',
-            'target': 'current',
-        }
-
-    def action_finalize(self):
-        """Finalize the session — all child counts must be done."""
+    # ── actions ─────────────────────────────────────────────────
+    def action_close(self):
+        """Close the session — all child counts must be done."""
         for rec in self:
             if rec.state != 'draft':
-                raise UserError(_("Only in-progress sessions can be finalized."))
-
-            incomplete_tills = rec.till_count_ids.filtered(
+                raise UserError(_("Session is already closed."))
+            open_tills = rec.till_count_ids.filtered(
                 lambda t: t.state != 'done'
             )
-            if incomplete_tills:
-                names = ', '.join(incomplete_tills.mapped('till_name'))
+            if open_tills:
                 raise UserError(_(
-                    "Complete all till counts before finalizing. "
-                    "Still counting: %s", names,
+                    "All till counts must be marked Done before "
+                    "closing the session. Open tills: %s",
+                    ', '.join(open_tills.mapped('till_name')),
                 ))
-
-            incomplete_safe = rec.safe_count_ids.filtered(
+            open_safe = rec.safe_count_ids.filtered(
                 lambda s: s.state != 'done'
             )
-            if incomplete_safe:
+            if open_safe:
                 raise UserError(_(
-                    "Complete the safe count before finalizing the session."
+                    "All safe counts must be marked Done before "
+                    "closing the session."
                 ))
-
             rec.state = 'done'
             rec.message_post(
                 body=_(
-                    "<strong>Treasury Session Finalized</strong><br/>"
-                    "%(count)d till(s): $%(tills).2f<br/>"
-                    "Safe: $%(safe).2f<br/>"
+                    "<strong>Session Closed</strong><br/>"
+                    "Tills: $%(tills).2f | Safe: $%(safe).2f | "
                     "Grand Total: $%(grand).2f",
-                    count=rec.till_count,
                     tills=rec.total_tills,
                     safe=rec.total_safe,
                     grand=rec.grand_total,
@@ -217,36 +135,38 @@ class ElksTreasurySession(models.Model):
                 subtype_xmlid='mail.mt_note',
             )
 
-    def action_cancel(self):
-        """Cancel the session."""
+    def action_reopen(self):
         for rec in self:
-            if rec.state == 'done':
-                raise UserError(_(
-                    "Cannot cancel a finalized session. "
-                    "Contact the Secretary."
-                ))
-            rec.state = 'cancelled'
-            rec.message_post(
-                body="<strong>Treasury Session Cancelled</strong>",
-                message_type='comment',
-                subtype_xmlid='mail.mt_note',
-            )
-
-    def action_reset_draft(self):
-        """Re-open a cancelled session."""
-        for rec in self:
-            if rec.state != 'cancelled':
-                raise UserError(_("Only cancelled sessions can be reset."))
+            if rec.state != 'done':
+                raise UserError(_("Only closed sessions can be re-opened."))
             rec.state = 'draft'
 
-    def action_view_change_slips(self):
-        """Smart button: show change slips for this session."""
+    def action_add_till(self):
+        """Create a new till count linked to this session."""
         self.ensure_one()
+        till = self.env['elks.till.count'].create({
+            'session_id': self.id,
+            'session_date': self.session_date,
+        })
         return {
             'type': 'ir.actions.act_window',
-            'name': _('Change Slips'),
-            'res_model': 'elks.change.slip',
-            'view_mode': 'list,form',
-            'domain': [('session_id', '=', self.id)],
-            'context': {'default_session_id': self.id},
+            'res_model': 'elks.till.count',
+            'res_id': till.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+
+    def action_add_safe_count(self):
+        """Create a new safe count linked to this session."""
+        self.ensure_one()
+        safe = self.env['elks.safe.count'].create({
+            'session_id': self.id,
+            'session_date': self.session_date,
+        })
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'elks.safe.count',
+            'res_id': safe.id,
+            'view_mode': 'form',
+            'target': 'current',
         }

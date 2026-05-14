@@ -10,7 +10,7 @@
         <field name="arch" type="xml">
             <form>
                 <header>
-                    <button name="action_complete"
+                    <button name="action_done"
                             string="Mark Complete"
                             type="object"
                             class="btn-primary"
@@ -32,27 +32,29 @@
                     </div>
                     <group>
                         <group string="Request">
-                            <field name="request_date"/>
+                            <field name="slip_date"/>
                             <field name="requested_by"/>
-                            <field name="requested_by_user_id"/>
-                            <field name="amount"/>
+                            <field name="total"/>
                         </group>
                         <group string="Processing">
                             <field name="approved_by"/>
                             <field name="session_id"/>
                         </group>
                     </group>
-                    <group>
-                        <group>
-                            <field name="denomination_received"
-                                   placeholder="What was turned in — e.g. '1x $50 bill'"/>
-                        </group>
-                        <group>
-                            <field name="denomination_given"
-                                   placeholder="What was given — e.g. '2x $20, 1x $10 roll of quarters'"/>
-                        </group>
-                    </group>
-                    <field name="note" placeholder="Additional notes..."/>
+                    <notebook>
+                        <page string="Denominations" name="denominations">
+                            <field name="denomination_ids" nolabel="1">
+                                <list editable="bottom">
+                                    <field name="denomination"/>
+                                    <field name="quantity"/>
+                                    <field name="subtotal"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="note" placeholder="Additional notes..."/>
+                        </page>
+                    </notebook>
                 </sheet>
                 <chatter/>
             </form>
@@ -67,10 +69,9 @@
         <field name="model">elks.change.slip</field>
         <field name="arch" type="xml">
             <list decoration-muted="state == 'cancelled'">
-                <field name="request_date"/>
+                <field name="slip_date"/>
                 <field name="requested_by"/>
-                <field name="amount" sum="Total"/>
-                <field name="denomination_given"/>
+                <field name="total" sum="Total"/>
                 <field name="approved_by"/>
                 <field name="state" widget="badge"
                        decoration-info="state == 'draft'"
@@ -96,15 +97,15 @@
                         domain="[('state', '=', 'done')]"/>
                 <separator/>
                 <filter string="Today" name="today"
-                        domain="[('request_date_only', '=',
+                        domain="[('slip_date', '=',
                                   context_today().strftime('%%Y-%%m-%%d'))]"/>
                 <filter string="This Month" name="this_month"
-                        domain="[('request_date_only', '&gt;=',
+                        domain="[('slip_date', '&gt;=',
                                   (context_today() - relativedelta(day=1)).strftime('%%Y-%%m-%%d')),
-                                 ('request_date_only', '&lt;',
+                                 ('slip_date', '&lt;',
                                   (context_today() + relativedelta(months=1, day=1)).strftime('%%Y-%%m-%%d'))]"/>
                 <filter string="Group by Date" name="group_date"
-                        context="{'group_by': 'request_date_only'}"/>
+                        context="{'group_by': 'slip_date'}"/>
                 <filter string="Group by Person" name="group_person"
                         context="{'group_by': 'requested_by'}"/>
             </search>

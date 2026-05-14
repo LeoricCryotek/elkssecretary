@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Till count model — denomination-level cash count for a single till.
+"""Till Count — count cash in a single register/till.
 
-Each till count belongs to a Treasury Session and contains denomination
-lines for bills, rolled coins, and loose coins.  The total is computed
-from the lines.
+The Secretary counts each till at the end of the night.  Each till has
+denomination lines for bills, rolled coins, and loose coins.  The count
+can be part of a Treasury Session (which groups all counts for one date).
 """
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
@@ -11,132 +11,139 @@ from odoo.exceptions import UserError
 from .denomination_line import (
     DENOMINATION_SELECTION,
     DENOMINATION_VALUES,
-    DENOM_CATEGORY,
+    CATEGORY_SELECTION,
 )
 
 
 class ElksTillCount(models.Model):
-    """Cash count for a single register / till."""
-
     _name = "elks.till.count"
     _description = "Till Count"
-    _order = "session_id desc, till_name"
+    _order = "session_date desc, id desc"
     _inherit = ["mail.thread"]
 
-    name = fields.Char(
-        compute="_compute_name", store=True,
-    )
+    till_name = fields.Char("Till Name", required=True, tracking=True)
+
     session_id = fields.Many2one(
         "elks.treasury.session", string="Count Session",
-        required=True, ondelete="cascade", index=True,
+        ondelete="set null", index=True,
     )
     session_date = fields.Date(
-        related="session_id.session_date", store=True, string="Date",
+        "Date", required=True,
+        default=fields.Date.context_today, index=True,
     )
-    till_name = fields.Char(
-        "Till / Register", required=True, default="Till 1",
-        help="Label for this register — e.g. 'Bar Till', 'Till 2'.",
+    counted_by = fields.Many2one(
+        "res.users", string="Counted By",
+        default=lambda self: self.env.user, tracking=True,
     )
     state = fields.Selection([
         ('draft', 'Counting'),
         ('done', 'Done'),
-    ], default='draft', tracking=True)
+    ], default='draft', tracking=True, index=True)
 
-    # ── denomination lines ───────────────────────────────────────
+    # ── denomination lines ──────────────────────────────────────
     denomination_ids = fields.One2many(
         "elks.denomination.line", "till_count_id",
         string="Denominations",
     )
 
-    # ── totals ───────────────────────────────────────────────────
+    # ── totals ──────────────────────────────────────────────────
     total_bills = fields.Monetary(
-        "Bills Total", compute="_compute_totals", store=True,
+        "Total Bills", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     total_rolled = fields.Monetary(
-        "Rolled Coins Total", compute="_compute_totals", store=True,
+        "Total Rolled", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     total_loose = fields.Monetary(
-        "Loose Coins Total", compute="_compute_totals", store=True,
+        "Total Loose", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     total = fields.Monetary(
-        "Grand Total", compute="_compute_totals", store=True,
+        "Total", compute="_compute_totals", store=True,
         currency_field="currency_id",
     )
     currency_id = fields.Many2one(
-        "res.currency", default=lambda self: self.env.company.currency_id,
+        "res.currency",
+        default=lambda self: self.env.company.currency_id,
     )
 
-    counted_by = fields.Many2one(
-        "res.users", string="Counted By",
-        default=lambda self: self.env.user,
-    )
     note = fields.Text("Notes")
 
-    # ── computes ─────────────────────────────────────────────────
-    @api.depends("till_name", "session_id.session_date")
-    def _compute_name(self):
-        for rec in self:
-            date = rec.session_id.session_date or ''
-            rec.name = f"{rec.till_name} — {date}" if date else rec.till_name
-
-    @api.depends(
-        "denomination_ids.subtotal",
-        "denomination_ids.category",
-    )
+    @api.depends("denomination_ids.subtotal", "denomination_ids.category")
     def _compute_totals(self):
         for rec in self:
             bills = rolled = loose = 0.0
             for line in rec.denomination_ids:
-                if line.category == 'bills':
+                if line.category == 'bill':
                     bills += line.subtotal
                 elif line.category == 'rolled':
                     rolled += line.subtotal
-                elif line.category == 'loose':
+                else:
                     loose += line.subtotal
             rec.total_bills = bills
             rec.total_rolled = rolled
             rec.total_loose = loose
             rec.total = bills + rolled + loose
 
-    # ── actions ──────────────────────────────────────────────────
+    # ── actions ─────────────────────────────────────────────────
     def action_populate_denominations(self):
-        """Pre-fill all denomination lines with qty = 0 for easy entry."""
+        """Pre-fill all denomination lines with zero quantity."""
         self.ensure_one()
-        existing = {l.denomination for l in self.denomination_ids}
+        existing = set(
+            self.denomination_ids.mapped(
+                lambda l: (l.denomination, l.category)
+            )
+        )
         seq = 10
-        lines = []
+        vals_list = []
+        # Bills
         for key, label in DENOMINATION_SELECTION:
-            if key not in existing:
-                lines.append((0, 0, {
-                    'denomination': key,
-                    'quantity': 0,
-                    'sequence': seq,
-                }))
-            seq += 10
-        if lines:
-            self.denomination_ids = lines
+            if DENOMINATION_VALUES.get(key, 0) >= 1.0:
+                if (key, 'bill') not in existing:
+                    vals_list.append({
+                        'till_count_id': self.id,
+                        'category': 'bill',
+                        'denomination': key,
+                        'quantity': 0,
+                        'sequence': seq,
+                    })
+                seq += 10
+        # Rolled coins
+        for key, label in DENOMINATION_SELECTION:
+            if DENOMINATION_VALUES.get(key, 0) < 1.0:
+                if (key, 'rolled') not in existing:
+                    vals_list.append({
+                        'till_count_id': self.id,
+                        'category': 'rolled',
+                        'denomination': key,
+                        'quantity': 0,
+                        'sequence': seq,
+                    })
+                seq += 10
+        # Loose coins
+        for key, label in DENOMINATION_SELECTION:
+            if DENOMINATION_VALUES.get(key, 0) < 1.0:
+                if (key, 'loose') not in existing:
+                    vals_list.append({
+                        'till_count_id': self.id,
+                        'category': 'loose',
+                        'denomination': key,
+                        'quantity': 0,
+                        'sequence': seq,
+                    })
+                seq += 10
+        if vals_list:
+            self.env['elks.denomination.line'].create(vals_list)
 
     def action_done(self):
-        """Mark this till count as complete."""
         for rec in self:
             if rec.state != 'draft':
-                raise UserError(_("Only counts in 'Counting' state can be finalized."))
+                raise UserError(_("Only draft counts can be marked done."))
             rec.state = 'done'
-            rec.message_post(
-                body=_(
-                    "<strong>Till Count Complete</strong><br/>"
-                    "%(till)s — Total: $%(total).2f",
-                    till=rec.till_name,
-                    total=rec.total,
-                ),
-                message_type='comment',
-                subtype_xmlid='mail.mt_note',
-            )
 
     def action_reset_draft(self):
-        """Re-open a completed count for corrections."""
         for rec in self:
+            if rec.state != 'done':
+                raise UserError(_("Only completed counts can be re-opened."))
             rec.state = 'draft'

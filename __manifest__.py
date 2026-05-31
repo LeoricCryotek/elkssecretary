@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     "name": "Elks Secretary — Daily Report, CLMS Queue & Treasury",
-    "version": "19.0.1.4",
+    "version": "19.0.1.16",
     "category": "Productivity",
     "summary": "Daily Secretary dashboard, CLMS processing queue, and "
                "Treasury house cash management (till counts, safe counts, "
@@ -43,6 +43,7 @@ Sections
         "security/ir.model.access.csv",
         "views/secretary_dashboard_views.xml",
         "views/clms_work_queue_views.xml",
+        "views/death_clms_queue_views.xml",
         "views/treasury_session_views.xml",
         "views/till_count_views.xml",
         "views/safe_count_views.xml",
@@ -50,6 +51,8 @@ Sections
         "views/bank_change_request_views.xml",
         "report/daily_secretary_report.xml",
         "report/treasury_reports.xml",
+        "report/meeting_money_reports.xml",
+        "views/meeting_money_views.xml",
         "views/elkssecretary_menus.xml",
     ],
     "installable": True,

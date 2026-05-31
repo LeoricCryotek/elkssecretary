@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Meeting Money — Form
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_meeting_money_form" model="ir.ui.view">
+        <field name="name">elks.meeting.money.form</field>
+        <field name="model">elks.meeting.money</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Meeting">
+                            <field name="meeting_date"/>
+                            <field name="collected_by"
+                                   placeholder="Trustee / member name(s), comma-separated"/>
+                            <field name="lodge_year" readonly="1"/>
+                        </group>
+                        <group string="Money In">
+                            <field name="fines_amount"/>
+                            <field name="project_dollars_amount"/>
+                            <field name="total_amount" readonly="1"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Lodge Year Running Totals (through this meeting)">
+                        <field name="fines_ytd" readonly="1"/>
+                        <field name="project_dollars_ytd" readonly="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Notes" name="notes">
+                            <field name="note" placeholder="Notes..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Meeting Money — List
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_meeting_money_list" model="ir.ui.view">
+        <field name="name">elks.meeting.money.list</field>
+        <field name="model">elks.meeting.money</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="meeting_date"/>
+                <field name="lodge_year"/>
+                <field name="collected_by"/>
+                <field name="fines_amount" sum="Fines"/>
+                <field name="project_dollars_amount" sum="Project $"/>
+                <field name="total_amount" sum="Total"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Meeting Money — Search
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="view_meeting_money_search" model="ir.ui.view">
+        <field name="name">elks.meeting.money.search</field>
+        <field name="model">elks.meeting.money</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="meeting_date"/>
+                <field name="lodge_year"/>
+                <field name="collected_by"/>
+                <filter string="Current Lodge Year" name="this_lodge_year"
+                        domain="[('meeting_date', '&gt;=',
+                                   ((context_today() - relativedelta(months=3)).strftime('%%Y') + '-04-01'))]"/>
+                <filter string="Group by Lodge Year" name="group_lodge_year"
+                        context="{'group_by': 'lodge_year'}"/>
+                <filter string="Group by Meeting Date" name="group_date"
+                        context="{'group_by': 'meeting_date'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Actions
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="action_meeting_money" model="ir.actions.act_window">
+        <field name="name">Meeting Money</field>
+        <field name="res_model">elks.meeting.money</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_this_lodge_year': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Record Fines &amp; Project Dollars collected at a meeting
+            </p>
+            <p>
+                Enter the meeting date and amounts collected.  The
+                Project Dollars running total for the lodge year
+                (April 1 – March 31) is shown on each record.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_meeting_money_year_summary" model="ir.actions.act_window">
+        <field name="name">Lodge Year Totals</field>
+        <field name="res_model">elks.meeting.money</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_group_lodge_year': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No Meeting Money records yet
+            </p>
+            <p>
+                Every meeting entry is shown grouped by lodge year
+                (April 1 – March 31). The group header shows the
+                running totals for Fines and Project Dollars.
+            </p>
+        </field>
+    </record>
+
+    <!-- Standalone action to print a sheet of blank Project Dollar slips.
+         Wraps the report action so it can be invoked from a menu item
+         (menus only accept act_window / server / client actions). -->
+    <record id="action_print_project_dollar_slips_blank" model="ir.actions.server">
+        <field name="name">Print Project Dollar Slips (blank sheet)</field>
+        <field name="model_id" ref="model_elks_meeting_money"/>
+        <field name="state">code</field>
+        <field name="code">
+report = env.ref('elkssecretary.action_report_project_dollar_slip_sheet')
+empty = env['elks.meeting.money']
+action = report.report_action(empty, data={'blank': True})
+        </field>
+    </record>
+
+</odoo>

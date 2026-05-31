@@ -14,3 +14,5 @@ access_bank_change_request_user,elks.bank.change.request.user,elkssecretary.mode
 access_bank_change_request_secretary,elks.bank.change.request.secretary,elkssecretary.model_elks_bank_change_request,group_elkssecretary_secretary,1,1,1,1
 access_bank_change_line_user,elks.bank.change.line.user,elkssecretary.model_elks_bank_change_line,group_elkssecretary_user,1,1,1,0
 access_bank_change_line_secretary,elks.bank.change.line.secretary,elkssecretary.model_elks_bank_change_line,group_elkssecretary_secretary,1,1,1,1
+access_meeting_money_user,elks.meeting.money.user,elkssecretary.model_elks_meeting_money,group_elkssecretary_user,1,1,1,0
+access_meeting_money_secretary,elks.meeting.money.secretary,elkssecretary.model_elks_meeting_money,group_elkssecretary_secretary,1,1,1,1

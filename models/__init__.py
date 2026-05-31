@@ -6,3 +6,4 @@ from . import safe_count
 from . import change_slip
 from . import treasury_session
 from . import bank_change_request
+from . import meeting_money

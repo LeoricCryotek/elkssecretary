@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Deaths — Pending CLMS Queue
+         Surfaces every contact dropped as deceased that hasn't yet
+         been pushed into CLMS at Grand Lodge.  The Secretary works
+         this queue alongside the dues CLMS Work Queue.
+
+         A record drops off this list the moment the Secretary clicks
+         "Mark Death Processed in CLMS" on the contact (which sets
+         x_death_clms_status='processed' and archives the record).
+         ═══════════════════════════════════════════════════════════ -->
+
+    <record id="view_death_clms_queue_list" model="ir.ui.view">
+        <field name="name">res.partner.death.clms.queue.list</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <list string="Deaths — Pending CLMS"
+                  decoration-warning="not x_date_read_on_floor"
+                  decoration-info="x_date_read_on_floor and not x_death_clms_processed_date">
+                <field name="name"/>
+                <field name="x_detail_member_num" string="Member #"/>
+                <field name="x_date_of_death" string="Date of Death"/>
+                <field name="x_date_read_on_floor" string="Read on Floor"/>
+                <field name="x_drop_notes" string="Notes" optional="show"/>
+                <field name="x_death_clms_status" widget="badge"
+                       decoration-warning="x_death_clms_status == 'pending'"
+                       decoration-success="x_death_clms_status == 'processed'"/>
+                <field name="x_drop_date" optional="hide"/>
+                <field name="x_death_clms_processed_by" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Reuse the existing search view on res.partner if elkscontacts
+         exposes one we can extend later; for now a small local search
+         keeps this queue focused. -->
+    <record id="view_death_clms_queue_search" model="ir.ui.view">
+        <field name="name">res.partner.death.clms.queue.search</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <search string="Deaths — Pending CLMS">
+                <field name="name"/>
+                <field name="x_detail_member_num" string="Member #"/>
+                <separator/>
+                <filter string="Not Yet Read on Floor"
+                        name="filter_not_read_on_floor"
+                        domain="[('x_date_read_on_floor', '=', False)]"/>
+                <filter string="Read on Floor (Ready for CLMS)"
+                        name="filter_read_on_floor"
+                        domain="[('x_date_read_on_floor', '!=', False)]"/>
+                <separator/>
+                <group>
+                    <filter string="Date of Death" name="group_dod"
+                            context="{'group_by': 'x_date_of_death:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_death_clms_queue" model="ir.actions.act_window">
+        <field name="name">Deaths — Pending CLMS</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('x_death_clms_status', '=', 'pending')]</field>
+        <field name="context">
+            {'active_test': False, 'search_default_filter_not_read_on_floor': 0}
+        </field>
+        <field name="search_view_id" ref="view_death_clms_queue_search"/>
+        <field name="view_id" ref="view_death_clms_queue_list"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No deceased members pending CLMS entry.
+            </p>
+            <p>
+                Records appear here when a member is dropped as Deceased.
+                Open the contact to read the death on the floor and
+                then push the entry into CLMS at Grand Lodge.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu under Secretary, right next to the dues CLMS Work Queue -->
+    <menuitem id="menu_elkssecretary_death_clms_queue"
+              name="Deaths — Pending CLMS"
+              parent="menu_elkssecretary_root"
+              action="action_death_clms_queue"
+              sequence="22"/>
+
+</odoo>

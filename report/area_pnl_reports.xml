@@ -1,0 +1,872 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Area P&L &amp;#8212; Summary Report (1-page, default Preview)
+         ═══════════════════════════════════════════════════════════
+         [Human]
+           One-page review version.  Sales/COGS/Other rolled up by
+           category (not line-by-line), KPI traffic-lights, prior-
+           period comparison, signature block.  This is what the
+           Trustees see for monthly review.
+         [AI]
+           • Two actions: ...summary (qweb-pdf, used by Print menu via
+             binding) and ...summary_html (qweb-html, used by
+             action_print_pnl which is the Preview button).
+           • Aggregation is done in three model helpers:
+             get_sales_summary_by_category / get_cogs_summary_by_category
+             / get_other_summary_by_category &amp;#8212; each returns a list of
+             (category, amount) tuples sorted by amount desc.
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="action_report_area_pnl_summary"
+            model="ir.actions.report">
+        <field name="name">P&amp;L Statement (Summary)</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">elkssecretary.report_area_pnl_summary</field>
+        <field name="report_file">elkssecretary.report_area_pnl_summary</field>
+        <field name="paperformat_id" ref="base.paperformat_us"/>
+        <field name="binding_model_id" ref="model_elks_area_pnl"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <record id="action_report_area_pnl_summary_html"
+            model="ir.actions.report">
+        <field name="name">P&amp;L Statement (Summary, HTML)</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="report_type">qweb-html</field>
+        <field name="report_name">elkssecretary.report_area_pnl_summary</field>
+        <field name="report_file">elkssecretary.report_area_pnl_summary</field>
+        <field name="paperformat_id" ref="base.paperformat_us"/>
+    </record>
+
+    <template id="report_area_pnl_summary">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="pnl">
+                <t t-set="settings" t-value="pnl.env['elks.lodge.settings'].sudo().search([], limit=1)"/>
+                <t t-set="month_label" t-value="dict(pnl._fields['period_month'].selection).get(pnl.period_month, pnl.period_month)"/>
+                <t t-set="sales_groups" t-value="pnl.get_sales_summary_by_category()"/>
+                <t t-set="other_groups" t-value="pnl.get_other_summary_by_category()"/>
+                <div class="page" style="font-family: Arial, sans-serif; font-size: 11px;">
+
+                    <!-- ===== HEADER ===== -->
+                    <table style="width: 100%; margin-bottom: 8px; border: none;">
+                        <tr>
+                            <td style="width: 15%; text-align: center; vertical-align: middle; border: none; padding: 0;">
+                                <t t-if="settings and settings.logo_primary">
+                                    <img t-att-src="image_data_uri(settings.logo_primary)"
+                                         style="max-height: 70px; max-width: 90px;" alt="Elks USA"/>
+                                </t>
+                            </td>
+                            <td style="text-align: center; vertical-align: middle; border: none; padding: 0 10px;">
+                                <h2 style="font-size: 20px; margin: 0 0 2px 0; color: #333;">
+                                    <t t-if="settings and settings.name"><span t-field="settings.name"/></t>
+                                    <t t-else="">Elks Lodge</t>
+                                    <t t-if="settings and settings.lodge_number">
+                                        #<span t-field="settings.lodge_number"/>
+                                    </t>
+                                </h2>
+                                <p style="color: #777; font-size: 10px; margin: 0;">
+                                    Benevolent and Protective Order of Elks
+                                </p>
+                                <h3 style="font-size: 16px; margin: 4px 0 0 0; color: #003366;">
+                                    Profit &amp; Loss &amp;#8212; Summary
+                                </h3>
+                                <t t-if="pnl.event_id">
+                                    <p style="color: #555; font-size: 11px; margin: 2px 0 0 0; font-weight: bold;">
+                                        Event: <span t-field="pnl.event_id.name"/>
+                                    </p>
+                                </t>
+                            </td>
+                            <td style="width: 15%; text-align: center; vertical-align: middle; border: none; padding: 0;">
+                                <t t-if="settings and settings.logo_lodge">
+                                    <img t-att-src="image_data_uri(settings.logo_lodge)"
+                                         style="max-height: 70px; max-width: 90px;" alt="Lodge Logo"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+                    <div style="border-top: 2px solid #003366; margin-bottom: 10px;"/>
+
+                    <!-- ===== Period bar ===== -->
+                    <table style="width: 100%; margin-bottom: 12px; border: none; font-size: 12px;">
+                        <tr>
+                            <td style="border: none;">
+                                <strong>Area:</strong>
+                                <span t-field="pnl.area_id.name"/>
+                            </td>
+                            <td style="border: none; text-align: center;">
+                                <strong>Period:</strong>
+                                <t t-esc="month_label"/>
+                                <t t-esc="pnl.period_year"/>
+                            </td>
+                            <td style="border: none; text-align: right;">
+                                <strong>Lodge Year:</strong>
+                                <span t-field="pnl.lodge_year"/>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===== REVENUE by Category ===== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 2px; margin: 10px 0 4px 0; font-size: 13px;">
+                        Revenue by Category
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <thead>
+                            <tr style="background: #f0f5ff;">
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Category</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 18%;">Amount</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">% of Sales</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="sales_groups" t-as="grp">
+                                <tr>
+                                    <td style="padding: 3px 8px; border: 1px solid #eee;">
+                                        <t t-esc="grp[0]"/>
+                                    </td>
+                                    <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">
+                                        $<t t-esc="'%.2f' % grp[1]"/>
+                                    </td>
+                                    <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">
+                                        <t t-if="pnl.gross_sales">
+                                            <t t-esc="'{:.1f}%'.format(grp[1] / pnl.gross_sales * 100)"/>
+                                        </t>
+                                        <t t-else="">&amp;#8212;</t>
+                                    </td>
+                                </tr>
+                            </t>
+                            <tr style="background: #f8f8f8; font-weight: bold;">
+                                <td style="padding: 5px 8px; border: 1px solid #ddd;">
+                                    Total Revenue
+                                </td>
+                                <td style="padding: 5px 8px; text-align: right; border: 1px solid #ddd;">
+                                    $<t t-esc="'%.2f' % pnl.gross_sales"/>
+                                </td>
+                                <td style="padding: 5px 8px; text-align: right; border: 1px solid #ddd;">
+                                    100.0%
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ===== COST OF GOODS SOLD ===== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 2px; margin: 12px 0 4px 0; font-size: 13px;">
+                        Cost of Goods Sold
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <tr style="background: #f8f8f8; font-weight: bold;">
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; width: 65%;">Total Cost of Goods Sold</td>
+                            <td style="padding: 5px 8px; text-align: right; border: 1px solid #ddd; width: 18%;">
+                                $<t t-esc="'%.2f' % pnl.total_cogs"/>
+                            </td>
+                            <td style="padding: 5px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">
+                                <t t-if="pnl.gross_sales">
+                                    <t t-esc="'{:.1f}%'.format(pnl.cogs_pct * 100)"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===== GROSS PROFIT (Revenue − COGS) ===== -->
+                    <table style="width: 100%; margin: 8px 0 0 0; border-collapse: collapse; font-size: 13px;">
+                        <tr style="background: #e8f0ff;">
+                            <td style="padding: 8px 14px; font-weight: bold; border: 1px solid #003366; width: 65%;">
+                                Gross Profit (Revenue &amp;#8722; COGS)
+                            </td>
+                            <td style="padding: 8px 14px; text-align: right; font-weight: bold; border: 1px solid #003366; width: 18%;">
+                                $<t t-esc="'%.2f' % (pnl.gross_sales - pnl.total_cogs)"/>
+                            </td>
+                            <td style="padding: 8px 14px; text-align: right; border: 1px solid #003366; width: 14%;">
+                                <t t-if="pnl.gross_sales">
+                                    <t t-esc="'{:.2f}%'.format(pnl.gross_margin_pct * 100)"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===== OPERATING EXPENSES ===== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 2px; margin: 14px 0 4px 0; font-size: 13px;">
+                        Operating Expenses
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <tr>
+                            <td style="padding: 4px 8px; border: 1px solid #eee; width: 65%;">Total Labor</td>
+                            <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee; width: 18%;">
+                                $<t t-esc="'%.2f' % pnl.total_labor"/>
+                            </td>
+                            <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee; width: 14%; color: #777;">
+                                <t t-if="pnl.gross_sales">
+                                    <t t-esc="'{:.1f}%'.format(pnl.labor_pct * 100)"/>
+                                </t>
+                            </td>
+                        </tr>
+                        <t t-foreach="other_groups" t-as="ogrp">
+                            <tr>
+                                <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                    Other &amp;#8212; <t t-esc="ogrp[0]"/>
+                                </td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                    $<t t-esc="'%.2f' % ogrp[1]"/>
+                                </td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee; color: #777;">
+                                    <t t-if="pnl.gross_sales">
+                                        <t t-esc="'{:.1f}%'.format(ogrp[1] / pnl.gross_sales * 100)"/>
+                                    </t>
+                                </td>
+                            </tr>
+                        </t>
+                        <tr style="background: #f8f8f8; font-weight: bold;">
+                            <td style="padding: 5px 8px; border: 1px solid #ddd;">Total Operating Expenses</td>
+                            <td style="padding: 5px 8px; text-align: right; border: 1px solid #ddd;">
+                                $<t t-esc="'%.2f' % (pnl.total_labor + pnl.total_other)"/>
+                            </td>
+                            <td style="padding: 5px 8px; text-align: right; border: 1px solid #ddd;">
+                                <t t-if="pnl.gross_sales">
+                                    <t t-esc="'{:.1f}%'.format((pnl.total_labor + pnl.total_other) / pnl.gross_sales * 100)"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===== NET INCOME (Gross Profit − OpEx) ===== -->
+                    <table style="width: 100%; margin: 8px 0 0 0; border-collapse: collapse; font-size: 13px;">
+                        <tr style="background: #003366; color: white;">
+                            <td style="padding: 12px 14px; font-weight: bold; font-size: 16px; border: 1px solid #003366; width: 65%;">
+                                NET INCOME (Gross Profit &amp;#8722; Operating Expenses)
+                            </td>
+                            <td style="padding: 12px 14px; text-align: right; font-weight: bold; font-size: 16px; border: 1px solid #003366; width: 18%;">
+                                $<t t-esc="'%.2f' % pnl.net_income"/>
+                            </td>
+                            <td style="padding: 12px 14px; text-align: right; font-weight: bold; border: 1px solid #003366; width: 14%;">
+                                <t t-if="pnl.gross_sales">
+                                    <t t-esc="'{:.2f}%'.format(pnl.net_margin_pct * 100)"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===== KPI TRAFFIC LIGHTS (compact) ===== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 2px; margin: 14px 0 4px 0; font-size: 13px;">
+                        Performance vs Elks AA Manual Targets
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <thead>
+                            <tr style="background: #f0f5ff;">
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Ratio</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">Actual</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">Target</th>
+                                <th style="padding: 4px 8px; text-align: center; border: 1px solid #ddd; width: 22%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 3px 8px; border: 1px solid #eee;">COGS %</td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.cogs_pct * 100)"/>
+                                </td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">&amp;#8804; 35%</td>
+                                <td t-att-style="'padding: 3px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.cogs_status == 'green' else
+                                        'color: #cc8800;' if pnl.cogs_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.cogs_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.cogs_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.cogs_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.cogs_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212;</t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 8px; border: 1px solid #eee;">Labor %</td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.labor_pct * 100)"/>
+                                </td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">&amp;#8804; 35%</td>
+                                <td t-att-style="'padding: 3px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.labor_status == 'green' else
+                                        'color: #cc8800;' if pnl.labor_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.labor_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.labor_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.labor_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.labor_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212;</t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 8px; border: 1px solid #eee;">Prime Cost % (COGS + Labor)</td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.prime_cost_pct * 100)"/>
+                                </td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">&amp;#8804; 65%</td>
+                                <td t-att-style="'padding: 3px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.prime_cost_status == 'green' else
+                                        'color: #cc8800;' if pnl.prime_cost_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.prime_cost_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.prime_cost_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.prime_cost_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.prime_cost_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212;</t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px 8px; border: 1px solid #eee;">Net Margin %</td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.net_margin_pct * 100)"/>
+                                </td>
+                                <td style="padding: 3px 8px; text-align: right; border: 1px solid #eee;">&amp;#8805; 5%</td>
+                                <td t-att-style="'padding: 3px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.net_margin_status == 'green' else
+                                        'color: #cc8800;' if pnl.net_margin_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.net_margin_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.net_margin_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.net_margin_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.net_margin_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212;</t>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ===== PRIOR PERIOD ===== -->
+                    <table style="width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 11px;">
+                        <tr style="background: #f0f5ff;">
+                            <td style="padding: 4px 8px; border: 1px solid #ccc; width: 60%;">Prior Month Net</td>
+                            <td style="padding: 4px 8px; text-align: right; border: 1px solid #ccc;">
+                                $<t t-esc="'%.2f' % pnl.prior_net_income"/>
+                            </td>
+                            <td style="padding: 4px 8px; text-align: center; border: 1px solid #ccc; width: 22%;"/>
+                        </tr>
+                        <tr style="background: #f0f5ff;">
+                            <td style="padding: 4px 8px; border: 1px solid #ccc;">&amp;#916; vs Prior Month</td>
+                            <td t-att-style="'padding: 4px 8px; text-align: right; border: 1px solid #ccc; font-weight: bold; ' + (
+                                    'color: #006600;' if pnl.variance_status == 'up'   else
+                                    'color: #cc0000;' if pnl.variance_status == 'down' else
+                                    'color: #888;')">
+                                <t t-if="pnl.variance_status == 'up'">&amp;#9650; </t>
+                                <t t-elif="pnl.variance_status == 'down'">&amp;#9660; </t>
+                                <t t-elif="pnl.variance_status == 'flat'">&amp;#8594; </t>
+                                $<t t-esc="'%.2f' % pnl.variance_vs_prior"/>
+                            </td>
+                            <td style="padding: 4px 8px; text-align: center; border: 1px solid #ccc;"/>
+                        </tr>
+                    </table>
+
+                    <!-- ===== SIGNATURE BLOCK ===== -->
+                    <div style="margin-top: 22px;">
+                        <table style="width: 100%; border: none;">
+                            <tr>
+                                <td style="width: 45%; border: none; padding-top: 24px;">
+                                    <div style="border-top: 1px solid #333; padding-top: 3px; text-align: center; font-size: 11px; color: #555;">
+                                        Prepared By
+                                    </div>
+                                </td>
+                                <td style="width: 10%; border: none;"/>
+                                <td style="width: 45%; border: none; padding-top: 24px;">
+                                    <div style="border-top: 1px solid #333; padding-top: 3px; text-align: center; font-size: 11px; color: #555;">
+                                        Reviewed By
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <p style="text-align: center; font-size: 9px; color: #aaa; margin-top: 12px;">
+                        <t t-if="pnl.state == 'validated'">
+                            ✓ Validated <t t-esc="pnl.validated_date" t-options="{'widget': 'datetime'}"/>
+                            by <t t-esc="pnl.validated_by.name"/>
+                            &amp;nbsp;|&amp;nbsp;
+                        </t>
+                        Summary view &amp;#8212; print the Detailed report for line-item breakdown.
+                        &amp;nbsp;|&amp;nbsp;
+                        Printed <t t-esc="context_timestamp(datetime.datetime.now()).strftime('%m/%d/%Y %I:%M %p')"/>
+                    </p>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Area P&L &amp;#8212; Detailed Printable Report (line-by-line)
+         ═══════════════════════════════════════════════════════════ -->
+    <record id="action_report_area_pnl" model="ir.actions.report">
+        <field name="name">P&amp;L Statement (Detailed)</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">elkssecretary.report_area_pnl</field>
+        <field name="report_file">elkssecretary.report_area_pnl</field>
+        <field name="paperformat_id" ref="base.paperformat_us"/>
+        <!-- No binding_model_id here &amp;#8212; the Summary report takes the
+             default Print slot; the Detailed report is reached via
+             the form's "Print Detailed" button. -->
+    </record>
+
+    <record id="action_report_area_pnl_html" model="ir.actions.report">
+        <field name="name">P&amp;L Statement (HTML)</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="report_type">qweb-html</field>
+        <field name="report_name">elkssecretary.report_area_pnl</field>
+        <field name="report_file">elkssecretary.report_area_pnl</field>
+        <field name="paperformat_id" ref="base.paperformat_us"/>
+    </record>
+
+    <template id="report_area_pnl">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="pnl">
+                <t t-set="settings" t-value="pnl.env['elks.lodge.settings'].sudo().search([], limit=1)"/>
+                <t t-set="month_label" t-value="dict(pnl._fields['period_month'].selection).get(pnl.period_month, pnl.period_month)"/>
+                <div class="page" style="font-family: Arial, sans-serif; font-size: 12px;">
+
+                    <!-- ===== LODGE HEADER WITH LOGOS ===== -->
+                    <table style="width: 100%; margin-bottom: 10px; border: none;">
+                        <tr>
+                            <td style="width: 15%; text-align: center; vertical-align: middle; border: none; padding: 0;">
+                                <t t-if="settings and settings.logo_primary">
+                                    <img t-att-src="image_data_uri(settings.logo_primary)"
+                                         style="max-height: 80px; max-width: 100px;" alt="Elks USA"/>
+                                </t>
+                            </td>
+                            <td style="text-align: center; vertical-align: middle; border: none; padding: 0 10px;">
+                                <h2 style="font-size: 22px; margin: 0 0 2px 0; color: #333;">
+                                    <t t-if="settings and settings.name"><span t-field="settings.name"/></t>
+                                    <t t-else="">Elks Lodge</t>
+                                    <t t-if="settings and settings.lodge_number">
+                                        #<span t-field="settings.lodge_number"/>
+                                    </t>
+                                </h2>
+                                <p style="color: #777; font-size: 11px; margin: 0;">
+                                    Benevolent and Protective Order of Elks
+                                </p>
+                                <h3 style="font-size: 18px; margin: 6px 0 0 0; color: #003366;">
+                                    Profit &amp; Loss Statement
+                                </h3>
+                                <t t-if="pnl.event_id">
+                                    <p style="color: #555; font-size: 12px; margin: 2px 0 0 0; font-weight: bold;">
+                                        Event: <span t-field="pnl.event_id.name"/>
+                                    </p>
+                                </t>
+                            </td>
+                            <td style="width: 15%; text-align: center; vertical-align: middle; border: none; padding: 0;">
+                                <t t-if="settings and settings.logo_lodge">
+                                    <img t-att-src="image_data_uri(settings.logo_lodge)"
+                                         style="max-height: 80px; max-width: 100px;" alt="Lodge Logo"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+                    <div style="border-top: 2px solid #003366; margin-bottom: 15px;"/>
+
+                    <!-- ===== Period bar ===== -->
+                    <table style="width: 100%; margin-bottom: 16px; border: none; font-size: 14px;">
+                        <tr>
+                            <td style="border: none;">
+                                <strong>Area:</strong>
+                                <span t-field="pnl.area_id.name"/>
+                            </td>
+                            <td style="border: none; text-align: center;">
+                                <strong>Period:</strong>
+                                <t t-esc="month_label"/>
+                                <t t-esc="pnl.period_year"/>
+                                (<span t-field="pnl.period_start"/> – <span t-field="pnl.period_end"/>)
+                            </td>
+                            <td style="border: none; text-align: right;">
+                                <strong>Lodge Year:</strong>
+                                <span t-field="pnl.lodge_year"/>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===================================================
+                         REVENUE
+                         =================================================== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 3px; margin: 14px 0 6px 0;">
+                        Revenue
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead>
+                            <tr style="background: #f0f5ff;">
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd; width: 25%;">Category</th>
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Description</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 12%;">Qty</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">Unit Price</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 16%;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="pnl.sales_line_ids" t-as="line">
+                                <tr>
+                                    <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                        <t t-esc="line.category or ''"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                        <t t-esc="line.description or (line.product_id.display_name if line.product_id else '')"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        <t t-if="line.quantity"><t t-esc="'%.2f' % line.quantity"/></t>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        <t t-if="line.unit_price">$<t t-esc="'%.2f' % line.unit_price"/></t>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        $<t t-esc="'%.2f' % line.amount"/>
+                                    </td>
+                                </tr>
+                            </t>
+                            <tr style="background: #f8f8f8; font-weight: bold;">
+                                <td colspan="4" style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                    Total Revenue
+                                </td>
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                    $<t t-esc="'%.2f' % pnl.gross_sales"/>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ===================================================
+                         COST OF GOODS SOLD
+                         =================================================== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 3px; margin: 16px 0 6px 0;">
+                        Cost of Goods Sold
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead>
+                            <tr style="background: #f0f5ff;">
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Description</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 12%;">Qty</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">Unit Cost</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 16%;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="pnl.cogs_line_ids" t-as="line">
+                                <tr>
+                                    <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                        <t t-esc="line.description or (line.product_id.display_name if line.product_id else '')"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        <t t-esc="'%.2f' % line.quantity"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        $<t t-esc="'%.2f' % line.unit_cost"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        $<t t-esc="'%.2f' % line.total"/>
+                                    </td>
+                                </tr>
+                            </t>
+                            <tr style="background: #f8f8f8; font-weight: bold;">
+                                <td colspan="3" style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                    Total COGS
+                                </td>
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                    $<t t-esc="'%.2f' % pnl.total_cogs"/>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ===================================================
+                         GROSS PROFIT + KPI traffic lights
+                         =================================================== -->
+                    <table style="width: 60%; margin: 12px 0 12px auto; border-collapse: collapse; font-size: 13px;">
+                        <tr style="background: #e8f0ff;">
+                            <td style="padding: 8px 14px; font-weight: bold; border: 1px solid #003366;">
+                                Gross Profit (Revenue &amp;#8722; COGS)
+                            </td>
+                            <td style="padding: 8px 14px; text-align: right; font-weight: bold; border: 1px solid #003366;">
+                                $<t t-esc="'%.2f' % (pnl.gross_sales - pnl.total_cogs)"/>
+                            </td>
+                            <td style="padding: 8px 14px; border: 1px solid #003366; width: 12%;"/>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 14px; border: 1px solid #ccc; font-style: italic;">
+                                Gross Margin %
+                            </td>
+                            <td style="padding: 4px 14px; text-align: right; border: 1px solid #ccc;">
+                                <t t-esc="'{:.2f}%'.format(pnl.gross_margin_pct * 100)"/>
+                            </td>
+                            <td style="padding: 4px 14px; border: 1px solid #ccc;"/>
+                        </tr>
+                    </table>
+
+                    <!-- KPI Indicators block (Elks AA Manual targets) -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 3px; margin: 16px 0 6px 0;">
+                        Performance Indicators
+                        <span style="font-size: 10px; color: #888; font-weight: normal;">
+                            (vs Elks AA Manual targets)
+                        </span>
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead>
+                            <tr style="background: #f0f5ff;">
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Ratio</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">Actual</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 16%;">Target</th>
+                                <th style="padding: 4px 8px; text-align: center; border: 1px solid #ddd; width: 18%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 4px 8px; border: 1px solid #eee;">COGS % of Sales</td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.cogs_pct * 100)"/>
+                                </td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">&amp;#8804; 35%</td>
+                                <td t-att-style="'padding: 4px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.cogs_status == 'green' else
+                                        'color: #cc8800;' if pnl.cogs_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.cogs_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.cogs_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.cogs_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.cogs_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212; n/a</t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px; border: 1px solid #eee;">Labor % of Sales</td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.labor_pct * 100)"/>
+                                </td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">&amp;#8804; 35%</td>
+                                <td t-att-style="'padding: 4px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.labor_status == 'green' else
+                                        'color: #cc8800;' if pnl.labor_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.labor_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.labor_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.labor_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.labor_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212; n/a</t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px; border: 1px solid #eee;">Prime Cost % (COGS + Labor)</td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.prime_cost_pct * 100)"/>
+                                </td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">&amp;#8804; 65%</td>
+                                <td t-att-style="'padding: 4px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.prime_cost_status == 'green' else
+                                        'color: #cc8800;' if pnl.prime_cost_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.prime_cost_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.prime_cost_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.prime_cost_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.prime_cost_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212; n/a</t>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px; border: 1px solid #eee;">Net Margin %</td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.net_margin_pct * 100)"/>
+                                </td>
+                                <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">&amp;#8805; 5%</td>
+                                <td t-att-style="'padding: 4px 8px; text-align: center; border: 1px solid #eee; font-weight: bold; ' + (
+                                        'color: #006600;' if pnl.net_margin_status == 'green' else
+                                        'color: #cc8800;' if pnl.net_margin_status == 'yellow' else
+                                        'color: #cc0000;' if pnl.net_margin_status == 'red'    else
+                                        'color: #888;')">
+                                    <t t-if="pnl.net_margin_status == 'green'">&amp;#9650; On Target</t>
+                                    <t t-elif="pnl.net_margin_status == 'yellow'">&amp;#9679; Caution</t>
+                                    <t t-elif="pnl.net_margin_status == 'red'">&amp;#9660; Off Target</t>
+                                    <t t-else="">&amp;#8212; n/a</t>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ===================================================
+                         OPERATING EXPENSES &amp;#8212; LABOR
+                         =================================================== -->
+                    <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 3px; margin: 16px 0 6px 0;">
+                        Operating Expenses &amp;#8212; Labor
+                    </h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead>
+                            <tr style="background: #f0f5ff;">
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Employee</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 12%;">Hours</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 14%;">Rate</th>
+                                <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 16%;">Total</th>
+                                <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd; width: 18%;">Source</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="pnl.labor_line_ids" t-as="line">
+                                <tr>
+                                    <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                        <t t-if="line.employee_id"><span t-field="line.employee_id"/></t>
+                                        <t t-elif="line.notes"><t t-esc="line.notes"/></t>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        <t t-esc="'%.2f' % line.hours"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        $<t t-esc="'%.2f' % line.rate"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                        $<t t-esc="'%.2f' % line.total"/>
+                                    </td>
+                                    <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                        <t t-esc="dict(line._fields['source'].selection).get(line.source)"/>
+                                    </td>
+                                </tr>
+                            </t>
+                            <tr style="background: #f8f8f8; font-weight: bold;">
+                                <td colspan="3" style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                    Total Labor
+                                </td>
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                    $<t t-esc="'%.2f' % pnl.total_labor"/>
+                                </td>
+                                <td style="padding: 6px 8px; border: 1px solid #ddd; font-style: italic; font-weight: normal;">
+                                    <t t-esc="'{:.2f}%'.format(pnl.labor_pct * 100)"/> of Sales
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ===================================================
+                         OPERATING EXPENSES &amp;#8212; OTHER
+                         =================================================== -->
+                    <t t-if="pnl.other_line_ids">
+                        <h4 style="color: #003366; border-bottom: 1px solid #003366; padding-bottom: 3px; margin: 16px 0 6px 0;">
+                            Operating Expenses &amp;#8212; Other
+                        </h4>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background: #f0f5ff;">
+                                    <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd; width: 25%;">Category</th>
+                                    <th style="padding: 4px 8px; text-align: left; border: 1px solid #ddd;">Description</th>
+                                    <th style="padding: 4px 8px; text-align: right; border: 1px solid #ddd; width: 18%;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="pnl.other_line_ids" t-as="line">
+                                    <tr>
+                                        <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                            <t t-esc="line.category or ''"/>
+                                        </td>
+                                        <td style="padding: 4px 8px; border: 1px solid #eee;">
+                                            <t t-esc="line.description or ''"/>
+                                        </td>
+                                        <td style="padding: 4px 8px; text-align: right; border: 1px solid #eee;">
+                                            $<t t-esc="'%.2f' % line.amount"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                                <tr style="background: #f8f8f8; font-weight: bold;">
+                                    <td colspan="2" style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                        Total Other Expenses
+                                    </td>
+                                    <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">
+                                        $<t t-esc="'%.2f' % pnl.total_other"/>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+
+                    <!-- ===================================================
+                         BOTTOM-LINE SUMMARY
+                         =================================================== -->
+                    <table style="width: 70%; margin: 18px 0 0 auto; border-collapse: collapse; font-size: 13px;">
+                        <tr>
+                            <td style="padding: 5px 14px; border: 1px solid #ccc;">Total Revenue</td>
+                            <td style="padding: 5px 14px; text-align: right; border: 1px solid #ccc;">
+                                $<t t-esc="'%.2f' % pnl.gross_sales"/>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px 14px; border: 1px solid #ccc;">Total COGS</td>
+                            <td style="padding: 5px 14px; text-align: right; border: 1px solid #ccc;">
+                                ($<t t-esc="'%.2f' % pnl.total_cogs"/>)
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px 14px; border: 1px solid #ccc;">Total Labor</td>
+                            <td style="padding: 5px 14px; text-align: right; border: 1px solid #ccc;">
+                                ($<t t-esc="'%.2f' % pnl.total_labor"/>)
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px 14px; border: 1px solid #ccc;">Total Other Expenses</td>
+                            <td style="padding: 5px 14px; text-align: right; border: 1px solid #ccc;">
+                                ($<t t-esc="'%.2f' % pnl.total_other"/>)
+                            </td>
+                        </tr>
+                        <tr style="background: #003366; color: white;">
+                            <td style="padding: 10px 14px; font-weight: bold; font-size: 16px; border: 1px solid #003366;">
+                                NET INCOME
+                            </td>
+                            <td style="padding: 10px 14px; text-align: right; font-weight: bold; font-size: 16px; border: 1px solid #003366;">
+                                $<t t-esc="'%.2f' % pnl.net_income"/>
+                            </td>
+                        </tr>
+                        <tr style="background: #f0f5ff;">
+                            <td style="padding: 5px 14px; border: 1px solid #ccc; font-style: italic;">
+                                Prior Month Net
+                            </td>
+                            <td style="padding: 5px 14px; text-align: right; border: 1px solid #ccc;">
+                                $<t t-esc="'%.2f' % pnl.prior_net_income"/>
+                            </td>
+                        </tr>
+                        <tr style="background: #f0f5ff;">
+                            <td style="padding: 5px 14px; border: 1px solid #ccc; font-style: italic;">
+                                &amp;#916; vs Prior Month
+                            </td>
+                            <td t-att-style="'padding: 5px 14px; text-align: right; border: 1px solid #ccc; font-weight: bold; ' + (
+                                    'color: #006600;' if pnl.variance_status == 'up'   else
+                                    'color: #cc0000;' if pnl.variance_status == 'down' else
+                                    'color: #888;')">
+                                <t t-if="pnl.variance_status == 'up'">&amp;#9650; </t>
+                                <t t-elif="pnl.variance_status == 'down'">&amp;#9660; </t>
+                                <t t-elif="pnl.variance_status == 'flat'">&amp;#8594; </t>
+                                $<t t-esc="'%.2f' % pnl.variance_vs_prior"/>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- ===== Signature block ===== -->
+                    <div style="margin-top: 40px;">
+                        <table style="width: 100%; border: none;">
+                            <tr>
+                                <td style="width: 45%; border: none; padding-top: 40px;">
+                                    <div style="border-top: 1px solid #333; padding-top: 4px; text-align: center; font-size: 12px; color: #555;">
+                                        Prepared By
+                                    </div>
+                                </td>
+                                <td style="width: 10%; border: none;"/>
+                                <td style="width: 45%; border: none; padding-top: 40px;">
+                                    <div style="border-top: 1px solid #333; padding-top: 4px; text-align: center; font-size: 12px; color: #555;">
+                                        Reviewed By
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- ===== Footer ===== -->
+                    <p style="text-align: center; font-size: 10px; color: #aaa; margin-top: 22px;">
+                        <t t-if="pnl.state == 'validated'">
+                            ✓ Validated <t t-esc="pnl.validated_date" t-options="{'widget': 'datetime'}"/>
+                            by <t t-esc="pnl.validated_by.name"/>
+                            &amp;nbsp;|&amp;nbsp;
+                        </t>
+                        Official record of the
+                        <t t-if="settings and settings.name"><span t-field="settings.name"/></t>
+                        <t t-else="">Elks Lodge</t>.
+                        Printed <t t-esc="context_timestamp(datetime.datetime.now()).strftime('%m/%d/%Y %I:%M %p')"/>
+                    </p>
+                </div>
+            </t>
+        </t>
+    </template>
+
+</odoo>

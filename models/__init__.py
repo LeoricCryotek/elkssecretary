@@ -7,3 +7,7 @@ from . import change_slip
 from . import treasury_session
 from . import bank_change_request
 from . import meeting_money
+from . import area
+from . import area_pnl
+from . import hr_employee
+from . import product_template

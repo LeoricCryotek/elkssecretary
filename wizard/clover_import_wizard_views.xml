@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_clover_import_wizard_form" model="ir.ui.view">
+        <field name="name">elks.area.pnl.clover.import.form</field>
+        <field name="model">elks.area.pnl.clover.import</field>
+        <field name="arch" type="xml">
+            <form string="Import Clover Item Sales">
+                <!-- ── Step 1: select file ── -->
+                <group invisible="state != 'select'">
+                    <group string="Target">
+                        <field name="pnl_id" readonly="1" options="{'no_open': True}"/>
+                        <field name="area_id" readonly="1"/>
+                        <field name="tagged_product_count"
+                               readonly="1"
+                               string="Products tagged to this Area"/>
+                    </group>
+                    <group string="File">
+                        <field name="csv_file" filename="csv_filename"/>
+                        <field name="csv_filename" invisible="1"/>
+                    </group>
+                    <group string="Options" colspan="2">
+                        <field name="include_modifiers"/>
+                        <field name="use_cogs"/>
+                        <field name="clear_existing"/>
+                    </group>
+                    <!-- Big red warning when nothing is tagged.  This
+                         is the single most common cause of "0 matches"
+                         so we show it before the user even uploads.
+                         role="status" satisfies the Odoo 19 a11y check
+                         (BS5 alert-* divs must carry an ARIA role). -->
+                    <div colspan="2" class="alert alert-warning"
+                         role="status"
+                         invisible="tagged_product_count != 0">
+                        <strong>⚠ No products are tagged to this area yet.</strong>
+                        Open Inventory → Products, find each Clover item,
+                        and set its <em>Lodge Areas</em> field to include
+                        this area.  Once tagged, re-open this wizard.
+                    </div>
+                    <div colspan="2" class="text-muted"
+                         invisible="tagged_product_count == 0">
+                        <p>
+                            <strong>How matching works:</strong>
+                            Each item in the CSV is matched against the
+                            <strong><field name="tagged_product_count" readonly="1" nolabel="1"/></strong>
+                            product(s) tagged to this area, in order:
+                            (1) exact name (case-insensitive),
+                            (2) exact SKU,
+                            (3) "contains" fallback — but only if it's
+                            uniquely matched, so "Crown" won't silently
+                            grab "Apple Crown".
+                            Unmatched items are reported on the next
+                            screen.
+                        </p>
+                    </div>
+                </group>
+
+                <!-- ── Step 2: results ──
+                     KPI tiles in a 2-column group on top, then the
+                     two long-form text fields sit OUTSIDE any group
+                     so they span the full dialog width. -->
+                <group invisible="state != 'done'">
+                    <group string="Imported">
+                        <field name="matched_items_count" string="Items matched"/>
+                        <field name="matched_mods_count"  string="Modifiers matched"/>
+                        <field name="skipped_zero_count"  string="Rows skipped (zero sales)"/>
+                    </group>
+                    <group string="Needs Product Setup">
+                        <field name="unmatched_items_count" string="Unmatched items"/>
+                        <field name="unmatched_mods_count"  string="Unmatched modifiers"/>
+                    </group>
+                </group>
+                <separator string="Items needing product setup"
+                           invisible="state != 'done'"/>
+                <field name="unmatched_items_text" nolabel="1"
+                       readonly="1" widget="text"
+                       invisible="state != 'done'"/>
+                <separator string="Modifiers needing product setup"
+                           invisible="state != 'done'"/>
+                <field name="unmatched_mods_text" nolabel="1"
+                       readonly="1" widget="text"
+                       invisible="state != 'done'"/>
+
+                <field name="state" invisible="1"/>
+
+                <footer>
+                    <button name="action_import" type="object"
+                            string="Import"
+                            class="btn-primary"
+                            invisible="state != 'select'"/>
+                    <button special="cancel" string="Cancel"
+                            invisible="state != 'select'"/>
+                    <button name="action_close" type="object"
+                            string="Done"
+                            class="btn-primary"
+                            invisible="state != 'done'"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_clover_import_wizard" model="ir.actions.act_window">
+        <field name="name">Import Clover Sales CSV</field>
+        <field name="res_model">elks.area.pnl.clover.import</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="model_elks_area_pnl"/>
+        <field name="binding_view_types">form</field>
+    </record>
+
+</odoo>

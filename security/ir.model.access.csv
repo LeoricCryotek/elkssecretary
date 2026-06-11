@@ -16,3 +16,17 @@ access_bank_change_line_user,elks.bank.change.line.user,elkssecretary.model_elks
 access_bank_change_line_secretary,elks.bank.change.line.secretary,elkssecretary.model_elks_bank_change_line,group_elkssecretary_secretary,1,1,1,1
 access_meeting_money_user,elks.meeting.money.user,elkssecretary.model_elks_meeting_money,group_elkssecretary_user,1,1,1,0
 access_meeting_money_secretary,elks.meeting.money.secretary,elkssecretary.model_elks_meeting_money,group_elkssecretary_secretary,1,1,1,1
+access_elks_area_user,elks.area.user,elkssecretary.model_elks_area,group_elkssecretary_user,1,0,0,0
+access_elks_area_secretary,elks.area.secretary,elkssecretary.model_elks_area,group_elkssecretary_secretary,1,1,1,1
+access_area_pnl_user,elks.area.pnl.user,elkssecretary.model_elks_area_pnl,group_elkssecretary_user,1,1,1,0
+access_area_pnl_secretary,elks.area.pnl.secretary,elkssecretary.model_elks_area_pnl,group_elkssecretary_secretary,1,1,1,1
+access_area_pnl_sales_user,elks.area.pnl.sales.line.user,elkssecretary.model_elks_area_pnl_sales_line,group_elkssecretary_user,1,1,1,1
+access_area_pnl_sales_secretary,elks.area.pnl.sales.line.secretary,elkssecretary.model_elks_area_pnl_sales_line,group_elkssecretary_secretary,1,1,1,1
+access_area_pnl_labor_user,elks.area.pnl.labor.line.user,elkssecretary.model_elks_area_pnl_labor_line,group_elkssecretary_user,1,1,1,1
+access_area_pnl_labor_secretary,elks.area.pnl.labor.line.secretary,elkssecretary.model_elks_area_pnl_labor_line,group_elkssecretary_secretary,1,1,1,1
+access_area_pnl_cogs_user,elks.area.pnl.cogs.line.user,elkssecretary.model_elks_area_pnl_cogs_line,group_elkssecretary_user,1,1,1,1
+access_area_pnl_cogs_secretary,elks.area.pnl.cogs.line.secretary,elkssecretary.model_elks_area_pnl_cogs_line,group_elkssecretary_secretary,1,1,1,1
+access_area_pnl_other_user,elks.area.pnl.other.line.user,elkssecretary.model_elks_area_pnl_other_line,group_elkssecretary_user,1,1,1,1
+access_area_pnl_other_secretary,elks.area.pnl.other.line.secretary,elkssecretary.model_elks_area_pnl_other_line,group_elkssecretary_secretary,1,1,1,1
+access_clover_import_user,elks.area.pnl.clover.import.user,elkssecretary.model_elks_area_pnl_clover_import,group_elkssecretary_user,1,1,1,1
+access_clover_import_secretary,elks.area.pnl.clover.import.secretary,elkssecretary.model_elks_area_pnl_clover_import,group_elkssecretary_secretary,1,1,1,1

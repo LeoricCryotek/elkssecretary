@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Add "Lodge Area" field on the employee form so the timecard
+         pull can scope to employees assigned to a given area. -->
+    <record id="view_hr_employee_form_elks_area" model="ir.ui.view">
+        <field name="name">hr.employee.form.elks.area</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='department_id']" position="after">
+                <field name="elks_area_id"
+                       options="{'no_create': True}"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ════════════════════════════════════════════════════════════
+         product.template — Form view: add Lodge Areas tag field
+         ════════════════════════════════════════════════════════════ -->
+    <!-- [Human]
+           Adds the "Lodge Areas" tag field right after the Product
+           Category line on every product's form.  Pick one or more
+           areas (Lounge, Kitchen, etc.) and the Area P&L wizards
+           know where this product belongs.
+         [AI]
+           • Inherits product.product_template_form_view.
+           • widget=many2many_tags uses the area.color field for tag
+             colors so each area's tag pill is visually distinct.
+           • no_create=True prevents accidental area creation from
+             the product form. -->
+    <record id="view_product_template_form_elks_area" model="ir.ui.view">
+        <field name="name">product.template.form.elks.area</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='categ_id']" position="after">
+                <field name="elks_area_ids"
+                       widget="many2many_tags"
+                       options="{'no_create': True, 'color_field': 'color'}"
+                       placeholder="Add one or more lodge areas..."/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════════════
+         product.template — List view: add Lodge Areas column
+         ════════════════════════════════════════════════════════════ -->
+    <!-- [Human]
+           Adds a Lodge Areas column to the main Products list.
+           Hidden by default (optional="hide") — click the column
+           picker on the right of the header to show it.
+           Because the parent list has multi_edit enabled, you can
+           multi-select rows with the checkboxes and edit the Lodge
+           Areas cell on one row to apply that change to every
+           selected product at once.
+         [AI]
+           • Inherits product.product_template_tree_view (the list
+             reached from Invoicing → Customers → Products and
+             Inventory → Products).
+           • optional="hide" — the column starts hidden so existing
+             users don't see a forced layout change.
+           • Bulk edit: the parent view already declares
+             multi_edit="1", so editing a Many2many tag cell on one
+             selected row prompts "apply to all selected records?". -->
+    <record id="view_product_template_list_elks_area" model="ir.ui.view">
+        <field name="name">product.template.list.elks.area</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_tree_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='categ_id']" position="after">
+                <field name="elks_area_ids"
+                       widget="many2many_tags"
+                       optional="hide"
+                       options="{'color_field': 'color'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ════════════════════════════════════════════════════════════
+         product.template — Search view: filter + group by Lodge Area
+         ════════════════════════════════════════════════════════════ -->
+    <!-- [Human]
+           Adds two things to the Products search bar:
+           1. A search field "Lodge Areas" so you can type an area
+              name (e.g. "Lounge") and filter the list to products
+              tagged with it.
+           2. A "Group by Lodge Area" filter under Group By, so you
+              can see all products bucketed under each area as
+              collapsible sections.
+         [AI]
+           • Inherits product.product_template_search_view.
+           • The search field uses 'in' matching on the M2m, so
+             typing "Lounge" matches every product whose elks_area_ids
+             contains the Lounge area.
+           • Group By 'elks_area_ids' on a Many2many bucks each
+             product into every area it belongs to (a product tagged
+             with both Lounge AND Kitchen will appear in both
+             groups). -->
+    <record id="view_product_template_search_elks_area" model="ir.ui.view">
+        <field name="name">product.template.search.elks.area</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_search_view"/>
+        <field name="arch" type="xml">
+            <!-- Add search field after Product Category -->
+            <xpath expr="//field[@name='categ_id']" position="after">
+                <field name="elks_area_ids" string="Lodge Areas"/>
+            </xpath>
+            <!-- Add the group-by filter at the END of the search view.
+                 Using position="inside" on /search avoids depending on
+                 specific named filters that vary between Odoo
+                 versions (e.g. categ_id vs category_id). -->
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter string="Group by Lodge Area"
+                        name="group_elks_area"
+                        context="{'group_by': 'elks_area_ids'}"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

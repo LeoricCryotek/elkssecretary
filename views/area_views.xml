@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ════════ Area form ════════ -->
+    <record id="view_elks_area_form" model="ir.ui.view">
+        <field name="name">elks.area.form</field>
+        <field name="model">elks.area</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_pnls" type="object"
+                                class="oe_stat_button" icon="fa-line-chart">
+                            <field name="pnl_count" widget="statinfo"
+                                   string="P&amp;Ls"/>
+                        </button>
+                        <button class="oe_stat_button"
+                                icon="fa-check-square-o" disabled="1">
+                            <field name="pnl_validated_count"
+                                   widget="statinfo"
+                                   string="Validated"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Archived"
+                            bg_color="text-bg-danger"
+                            invisible="active"/>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="e.g. Kitchen"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="code" placeholder="KITCHEN"/>
+                            <field name="sequence"/>
+                            <field name="color" widget="color_picker"/>
+                        </group>
+                        <group>
+                            <field name="active" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="HR Departments"
+                           help="Pulling labor from timecards will only include employees in these departments.">
+                        <field name="department_ids" nolabel="1"
+                               widget="many2many_tags"
+                               options="{'no_create': True}"
+                               placeholder="Add departments that roll up into this area..."/>
+                    </group>
+                    <group string="Description">
+                        <field name="description" nolabel="1"
+                               placeholder="Notes about this area..."/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ════════ Area list ════════ -->
+    <record id="view_elks_area_list" model="ir.ui.view">
+        <field name="name">elks.area.list</field>
+        <field name="model">elks.area</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="pnl_count"/>
+                <field name="pnl_validated_count"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ════════ Area kanban (cards) — Odoo 19 t-name="card" ═══ -->
+    <record id="view_elks_area_kanban" model="ir.ui.view">
+        <field name="name">elks.area.kanban</field>
+        <field name="model">elks.area</field>
+        <field name="arch" type="xml">
+            <kanban>
+                <templates>
+                    <t t-name="card">
+                        <field class="fw-bold fs-5" name="name"/>
+                        <field class="text-muted" name="code"/>
+                        <div class="d-flex justify-content-between mt-2 text-muted small">
+                            <span><field name="pnl_count"/> P&amp;L(s)</span>
+                            <span><field name="pnl_validated_count"/> validated</span>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ════════ Areas action ════════ -->
+    <record id="action_elks_areas" model="ir.actions.act_window">
+        <field name="name">Areas</field>
+        <field name="res_model">elks.area</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Set up your areas</p>
+            <p>
+                Kitchen, Lounge, Banquet Hall, Pull Tabs — anywhere
+                you want to track its own monthly P&amp;L.
+            </p>
+        </field>
+    </record>
+
+</odoo>

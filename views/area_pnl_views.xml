@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ════════ P&L Form ════════ -->
+    <record id="view_area_pnl_form" model="ir.ui.view">
+        <field name="name">elks.area.pnl.form</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_pull_labor_from_timecards"
+                            string="Pull Labor from Timecards"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_open_clover_import"
+                            string="Import Clover CSV"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_add_sales_from_products"
+                            string="Add Sales from Products"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_add_cogs_from_products"
+                            string="Add COGS from Products"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_resync_cogs_from_sales"
+                            string="Re-sync COGS from Sales"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'draft'"
+                            confirm="Reset every COGS quantity to match its sales line and re-enable auto-sync? Manual adjustments will be lost."/>
+                    <button name="action_print_pnl"
+                            string="Preview P&amp;L"
+                            type="object"
+                            help="One-page summary view. Roll-ups by category, KPIs, prior-period comparison. Use this for monthly Trustee review."/>
+                    <button name="action_print_pnl_detailed"
+                            string="Preview Detailed"
+                            type="object"
+                            class="btn-link"
+                            help="Full line-by-line report — every sales, labor, COGS, and other-expense line. Use when reconciling individual entries."/>
+                    <button name="action_validate"
+                            string="Validate &amp; Lock"
+                            type="object" class="btn-primary"
+                            invisible="state != 'draft'"
+                            confirm="Validate and lock this P&amp;L? Once locked, lines can't be edited until re-opened."/>
+                    <button name="action_reopen"
+                            string="Re-open"
+                            type="object"
+                            invisible="state != 'validated'"
+                            groups="elkssecretary.group_elkssecretary_secretary"
+                            confirm="Re-open this validated P&amp;L for editing?"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,validated"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Validated"
+                            bg_color="text-bg-success"
+                            invisible="state != 'validated'"/>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Period">
+                            <field name="area_id"
+                                   readonly="state == 'validated'"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="period_year"
+                                   readonly="state == 'validated'"/>
+                            <field name="period_month"
+                                   readonly="state == 'validated'"/>
+                            <field name="event_id"
+                                   readonly="state == 'validated'"
+                                   options="{'no_create': True}"
+                                   placeholder="Optional — for single-event P&amp;L"/>
+                            <field name="event_date" readonly="1"
+                                   invisible="not event_id"/>
+                            <field name="period_start" readonly="1"/>
+                            <field name="period_end" readonly="1"/>
+                            <field name="lodge_year" readonly="1"/>
+                        </group>
+                        <group string="Status">
+                            <field name="validated_by" readonly="1"
+                                   invisible="state == 'draft'"/>
+                            <field name="validated_date" readonly="1"
+                                   invisible="state == 'draft'"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                    </group>
+
+                    <!-- KPI summary with Elks AA Manual traffic-lights -->
+                    <group string="Summary">
+                        <group string="Totals">
+                            <field name="gross_sales" readonly="1"/>
+                            <field name="total_cogs" readonly="1"/>
+                            <field name="total_labor" readonly="1"/>
+                            <field name="total_other" readonly="1"/>
+                            <field name="total_expenses" readonly="1"/>
+                            <field name="net_income" readonly="1"/>
+                        </group>
+                        <group string="Performance vs AA Manual Targets">
+                            <field name="cogs_pct" readonly="1"
+                                   widget="percentage"/>
+                            <field name="cogs_status" readonly="1"
+                                   widget="badge"
+                                   decoration-success="cogs_status == 'green'"
+                                   decoration-warning="cogs_status == 'yellow'"
+                                   decoration-danger="cogs_status == 'red'"
+                                   decoration-muted="cogs_status == 'na'"/>
+                            <field name="labor_pct" readonly="1"
+                                   widget="percentage"/>
+                            <field name="labor_status" readonly="1"
+                                   widget="badge"
+                                   decoration-success="labor_status == 'green'"
+                                   decoration-warning="labor_status == 'yellow'"
+                                   decoration-danger="labor_status == 'red'"
+                                   decoration-muted="labor_status == 'na'"/>
+                            <field name="prime_cost_pct" readonly="1"
+                                   widget="percentage"/>
+                            <field name="prime_cost_status" readonly="1"
+                                   widget="badge"
+                                   decoration-success="prime_cost_status == 'green'"
+                                   decoration-warning="prime_cost_status == 'yellow'"
+                                   decoration-danger="prime_cost_status == 'red'"
+                                   decoration-muted="prime_cost_status == 'na'"/>
+                            <field name="gross_margin_pct" readonly="1"
+                                   widget="percentage"/>
+                            <field name="net_margin_pct" readonly="1"
+                                   widget="percentage"/>
+                            <field name="net_margin_status" readonly="1"
+                                   widget="badge"
+                                   decoration-success="net_margin_status == 'green'"
+                                   decoration-warning="net_margin_status == 'yellow'"
+                                   decoration-danger="net_margin_status == 'red'"
+                                   decoration-muted="net_margin_status == 'na'"/>
+                        </group>
+                    </group>
+                    <group string="Comparison to Prior Month">
+                        <group>
+                            <field name="prior_net_income" readonly="1"/>
+                            <field name="variance_vs_prior" readonly="1"/>
+                            <field name="variance_status" readonly="1"
+                                   widget="badge"
+                                   decoration-success="variance_status == 'up'"
+                                   decoration-warning="variance_status == 'flat'"
+                                   decoration-danger="variance_status == 'down'"
+                                   decoration-muted="variance_status == 'na'"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Sales" name="sales">
+                            <field name="sales_line_ids"
+                                   readonly="state == 'validated'">
+                                <list editable="bottom">
+                                    <field name="product_id"
+                                           options="{'no_create': True}"/>
+                                    <field name="category"/>
+                                    <field name="description"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_price"/>
+                                    <field name="amount" sum="Total"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Labor" name="labor">
+                            <field name="labor_line_ids"
+                                   readonly="state == 'validated'">
+                                <list editable="bottom">
+                                    <field name="employee_id"/>
+                                    <field name="hours" sum="Hours"/>
+                                    <field name="rate"/>
+                                    <field name="total" sum="Total"/>
+                                    <field name="source"/>
+                                    <field name="notes"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="COGS" name="cogs">
+                            <field name="cogs_line_ids"
+                                   readonly="state == 'validated'">
+                                <list editable="bottom">
+                                    <field name="product_id"
+                                           options="{'no_create': True}"/>
+                                    <field name="description"/>
+                                    <field name="quantity" sum="Qty"/>
+                                    <field name="unit_cost"/>
+                                    <field name="total" sum="Total"/>
+                                    <field name="auto_synced"
+                                           optional="show"
+                                           widget="boolean_toggle"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Other Expenses" name="other">
+                            <field name="other_line_ids"
+                                   readonly="state == 'validated'">
+                                <list editable="bottom">
+                                    <field name="category"/>
+                                    <field name="description"/>
+                                    <field name="amount" sum="Total"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ════════ P&L List ════════ -->
+    <record id="view_area_pnl_list" model="ir.ui.view">
+        <field name="name">elks.area.pnl.list</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="arch" type="xml">
+            <list decoration-info="state == 'draft'"
+                  decoration-success="state == 'validated'">
+                <field name="period_year"/>
+                <field name="period_month"/>
+                <field name="area_id"/>
+                <field name="event_id" optional="show"/>
+                <field name="lodge_year"/>
+                <field name="gross_sales" sum="Sales"/>
+                <field name="total_expenses" sum="Expenses"/>
+                <field name="net_income" sum="Net"/>
+                <field name="cogs_pct" widget="percentage" optional="show"/>
+                <field name="labor_pct" widget="percentage"/>
+                <field name="net_margin_pct" widget="percentage" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-success="state == 'validated'"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ════════ P&L Kanban (dashboard cards) — t-name="card" ═══ -->
+    <record id="view_area_pnl_kanban" model="ir.ui.view">
+        <field name="name">elks.area.pnl.kanban</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="arch" type="xml">
+            <kanban>
+                <templates>
+                    <t t-name="card">
+                        <field class="fw-bold fs-5" name="name"/>
+                        <field class="text-muted" name="area_id"/>
+                        <field name="state"/>
+                        <div class="mt-2">
+                            <div>Sales: <field name="gross_sales"/></div>
+                            <div>Expenses: <field name="total_expenses"/></div>
+                            <div>Net: <strong><field name="net_income"/></strong></div>
+                            <div class="text-muted small">
+                                Δ vs prior: <field name="variance_vs_prior"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ════════ P&L Pivot ════════ -->
+    <record id="view_area_pnl_pivot" model="ir.ui.view">
+        <field name="name">elks.area.pnl.pivot</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="arch" type="xml">
+            <pivot sample="1">
+                <field name="area_id" type="row"/>
+                <field name="period_year" type="col"/>
+                <field name="period_month" type="col"/>
+                <field name="gross_sales" type="measure"/>
+                <field name="total_labor" type="measure"/>
+                <field name="total_cogs" type="measure"/>
+                <field name="total_other" type="measure"/>
+                <field name="net_income" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- ════════ P&L Graph ════════ -->
+    <record id="view_area_pnl_graph" model="ir.ui.view">
+        <field name="name">elks.area.pnl.graph</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="arch" type="xml">
+            <graph type="line" sample="1">
+                <field name="period_start" interval="month"/>
+                <field name="area_id"/>
+                <field name="net_income" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- ════════ P&L Search ════════ -->
+    <record id="view_area_pnl_search" model="ir.ui.view">
+        <field name="name">elks.area.pnl.search</field>
+        <field name="model">elks.area.pnl</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="area_id"/>
+                <field name="event_id"/>
+                <field name="lodge_year"/>
+                <field name="period_year"/>
+                <filter string="Draft" name="draft"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter string="Validated" name="validated"
+                        domain="[('state', '=', 'validated')]"/>
+                <filter string="Monthly (no event)" name="monthly_only"
+                        domain="[('event_id', '=', False)]"/>
+                <filter string="Event-scoped" name="event_only"
+                        domain="[('event_id', '!=', False)]"/>
+                <filter string="Current Lodge Year"
+                        name="current_lodge_year"
+                        domain="[('period_start', '&gt;=',
+                                   ((context_today() - relativedelta(months=3)).strftime('%%Y') + '-04-01'))]"/>
+                <filter string="Group by Area" name="group_area"
+                        context="{'group_by': 'area_id'}"/>
+                <filter string="Group by Event" name="group_event"
+                        context="{'group_by': 'event_id'}"/>
+                <filter string="Group by Lodge Year" name="group_lodge_year"
+                        context="{'group_by': 'lodge_year'}"/>
+                <filter string="Group by Year" name="group_year"
+                        context="{'group_by': 'period_year'}"/>
+                <filter string="Group by Month" name="group_month"
+                        context="{'group_by': 'period_month'}"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- ════════ Actions ════════ -->
+    <record id="action_area_pnl" model="ir.actions.act_window">
+        <field name="name">Area P&amp;L Entries</field>
+        <field name="res_model">elks.area.pnl</field>
+        <field name="view_mode">list,kanban,form,pivot,graph</field>
+        <field name="context">{
+            'search_default_current_lodge_year': 1,
+            'search_default_group_area': 1,
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create the first Area P&amp;L
+            </p>
+            <p>
+                Track monthly Profit &amp; Loss per operating area.
+                Validate to lock the record and feed the dashboard.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_area_pnl_dashboard" model="ir.actions.act_window">
+        <field name="name">Area P&amp;L Dashboard</field>
+        <field name="res_model">elks.area.pnl</field>
+        <field name="view_mode">kanban,pivot,graph,list,form</field>
+        <field name="domain">[('state', '=', 'validated')]</field>
+        <field name="context">{
+            'search_default_current_lodge_year': 1,
+            'search_default_group_area': 1,
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No validated P&amp;Ls yet
+            </p>
+            <p>
+                Validate at least one Area P&amp;L to populate the
+                dashboard with kanban cards, pivot, and trend charts.
+            </p>
+        </field>
+    </record>
+
+</odoo>

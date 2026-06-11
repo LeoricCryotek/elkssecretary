@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     "name": "Elks Secretary — Daily Report, CLMS Queue & Treasury",
-    "version": "19.0.1.16",
+    "version": "19.0.2.16",
     "category": "Productivity",
     "summary": "Daily Secretary dashboard, CLMS processing queue, and "
                "Treasury house cash management (till counts, safe counts, "
@@ -31,6 +31,7 @@ Sections
     "depends": [
         "base",
         "mail",
+        "project",
         "purchase",
         "hr_attendance",
         "elkscontacts",
@@ -52,7 +53,13 @@ Sections
         "report/daily_secretary_report.xml",
         "report/treasury_reports.xml",
         "report/meeting_money_reports.xml",
+        "report/area_pnl_reports.xml",
         "views/meeting_money_views.xml",
+        "views/area_views.xml",
+        "views/area_pnl_views.xml",
+        "views/hr_employee_views.xml",
+        "views/product_template_views.xml",
+        "wizard/clover_import_wizard_views.xml",
         "views/elkssecretary_menus.xml",
     ],
     "installable": True,

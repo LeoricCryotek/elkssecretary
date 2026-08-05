@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================
+         Board Queue report — every requisition awaiting Board approval
+         ============================================================ -->
+    <record id="action_report_board_queue" model="ir.actions.report">
+        <field name="name">Board Approval Queue</field>
+        <field name="model">purchase.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">elkssecretary.report_approval_queue</field>
+        <field name="report_file">elkssecretary.report_approval_queue</field>
+        <field name="paperformat_id" ref="base.paperformat_us"/>
+        <field name="print_report_name">'Board Approval Queue — %s' % (context_today().strftime('%Y-%m-%d'))</field>
+    </record>
+
+    <!-- ============================================================
+         Floor Queue report — every requisition awaiting Floor vote
+         ============================================================ -->
+    <record id="action_report_floor_queue" model="ir.actions.report">
+        <field name="name">Floor Approval Queue</field>
+        <field name="model">purchase.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">elkssecretary.report_approval_queue</field>
+        <field name="report_file">elkssecretary.report_approval_queue</field>
+        <field name="paperformat_id" ref="base.paperformat_us"/>
+        <field name="print_report_name">'Floor Approval Queue — %s' % (context_today().strftime('%Y-%m-%d'))</field>
+    </record>
+
+    <!-- ============================================================
+         Shared QWeb template — both reports use it
+         Title / queue-name switch is driven by data.get('queue_name')
+         ============================================================ -->
+    <template id="report_approval_queue">
+        <t t-call="web.html_container">
+            <t t-set="queue_name" t-value="data.get('queue_name') if data else 'Approval Queue'"/>
+            <t t-set="queue_state" t-value="data.get('queue_state') if data else 'board'"/>
+            <t t-set="settings" t-value="env['elks.lodge.settings'].sudo().search([], limit=1)"/>
+            <t t-set="grand_total" t-value="sum(d.amount_total for d in docs)"/>
+            <t t-set="over_budget_count" t-value="len(docs.filtered('x_has_over_budget_lines'))"/>
+
+            <t t-call="web.internal_layout">
+                <div class="page" style="font-family: Arial, sans-serif; font-size: 11px;">
+
+                    <!-- =========================
+                         Cover / summary block
+                         ========================= -->
+                    <table style="width:100%; margin-bottom:14px;">
+                        <tr>
+                            <td style="width:80px; vertical-align:top;">
+                                <t t-if="settings and settings.logo_primary">
+                                    <img t-att-src="image_data_uri(settings.logo_primary)"
+                                         style="max-height:70px; max-width:70px;"
+                                         alt="Elks Logo"/>
+                                </t>
+                            </td>
+                            <td style="vertical-align:middle; text-align:center;">
+                                <div style="font-size:22px; font-weight:bold; color:#2c3e50;">
+                                    <t t-out="queue_name"/>
+                                </div>
+                                <div style="font-size:14px; color:#555;">
+                                    Requisitions Presented for
+                                    <t t-if="queue_state == 'board'">Board</t>
+                                    <t t-if="queue_state == 'floor'">Floor</t>
+                                    Approval
+                                </div>
+                                <div style="font-size:11px; color:#777; margin-top:2px;">
+                                    Generated <span t-out="context_timestamp(datetime.datetime.now()).strftime('%B %d, %Y at %I:%M %p')"/>
+                                </div>
+                            </td>
+                            <td style="width:180px; vertical-align:top; text-align:right;">
+                                <table style="width:100%; border:1px solid #ccc;">
+                                    <tr style="background:#f4f6f8;">
+                                        <td style="padding:4px 6px; font-size:10px; color:#666;">Requisitions</td>
+                                        <td style="padding:4px 6px; text-align:right; font-weight:bold;">
+                                            <t t-out="len(docs)"/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:4px 6px; font-size:10px; color:#666;">Total</td>
+                                        <td style="padding:4px 6px; text-align:right; font-weight:bold;">
+                                            $<span t-out="'{:,.2f}'.format(grand_total)"/>
+                                        </td>
+                                    </tr>
+                                    <tr t-if="over_budget_count">
+                                        <td style="padding:4px 6px; font-size:10px; color:#c00;">Over-Budget</td>
+                                        <td style="padding:4px 6px; text-align:right; font-weight:bold; color:#c00;">
+                                            <t t-out="over_budget_count"/>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- Empty state -->
+                    <div t-if="not docs"
+                         style="border:1px dashed #bbb; padding:24px; text-align:center; color:#666;">
+                        <em>No requisitions are currently in this queue.</em>
+                    </div>
+
+                    <!-- =========================
+                         Summary table — one row per requisition
+                         ========================= -->
+                    <table t-if="docs" style="width:100%; border-collapse:collapse; margin-bottom:16px;">
+                        <thead style="background:#2c3e50; color:white;">
+                            <tr>
+                                <th style="padding:5px 6px; text-align:left; border:1px solid #2c3e50;">#</th>
+                                <th style="padding:5px 6px; text-align:left; border:1px solid #2c3e50;">Requisition</th>
+                                <th style="padding:5px 6px; text-align:left; border:1px solid #2c3e50;">Vendor</th>
+                                <th style="padding:5px 6px; text-align:left; border:1px solid #2c3e50;">Department / Committee</th>
+                                <th style="padding:5px 6px; text-align:right; border:1px solid #2c3e50;">Total</th>
+                                <th style="padding:5px 6px; text-align:center; border:1px solid #2c3e50; width:70px;">Vote</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="docs" t-as="po">
+                                <tr t-att-style="'background:#fff2f2;' if po.x_has_over_budget_lines else ''">
+                                    <td style="padding:5px 6px; border:1px solid #ddd; text-align:left;">
+                                        <span t-field="po.name"/>
+                                    </td>
+                                    <td style="padding:5px 6px; border:1px solid #ddd;">
+                                        <b t-out="po.x_requisition_title or '—'"/>
+                                        <t t-if="po.x_has_over_budget_lines">
+                                            <br/><span style="color:#c00; font-size:10px;">⚠ over budget</span>
+                                        </t>
+                                    </td>
+                                    <td style="padding:5px 6px; border:1px solid #ddd;">
+                                        <span t-field="po.partner_id"/>
+                                    </td>
+                                    <td style="padding:5px 6px; border:1px solid #ddd; font-size:10px;">
+                                        <span t-field="po.x_requesting_department_id"/>
+                                        <t t-if="po.x_requesting_committee_id">
+                                            <br/><em t-field="po.x_requesting_committee_id"/>
+                                        </t>
+                                    </td>
+                                    <td style="padding:5px 6px; border:1px solid #ddd; text-align:right; font-weight:bold;">
+                                        <span t-field="po.amount_total"
+                                              t-options='{"widget": "monetary", "display_currency": po.currency_id}'/>
+                                    </td>
+                                    <td style="padding:5px 6px; border:1px solid #ddd; text-align:center;">
+                                        <span style="border:1px solid #666; padding:0 6px;">Y</span>
+                                        &#160;/&#160;
+                                        <span style="border:1px solid #666; padding:0 6px;">N</span>
+                                    </td>
+                                </tr>
+                            </t>
+                            <!-- Grand total row -->
+                            <tr style="background:#f4f6f8; font-weight:bold;">
+                                <td colspan="4" style="padding:6px; border:1px solid #ddd; text-align:right;">GRAND TOTAL</td>
+                                <td style="padding:6px; border:1px solid #ddd; text-align:right;">
+                                    $<span t-out="'{:,.2f}'.format(grand_total)"/>
+                                </td>
+                                <td style="border:1px solid #ddd;"/>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- =========================
+                         Per-requisition detail — line items + GL breakdown
+                         ========================= -->
+                    <div t-if="docs" style="page-break-before:always;">
+                        <div style="font-size:16px; font-weight:bold; color:#2c3e50; margin-bottom:8px;">
+                            Requisition Details
+                        </div>
+
+                        <t t-foreach="docs" t-as="po">
+                            <div style="border:1px solid #ccc; margin-bottom:12px; page-break-inside:avoid;">
+                                <!-- Header strip -->
+                                <div t-att-style="'padding:6px 8px; background:' + ('#fff2f2' if po.x_has_over_budget_lines else '#f4f6f8') + '; border-bottom:1px solid #ccc;'">
+                                    <table style="width:100%;">
+                                        <tr>
+                                            <td style="vertical-align:top;">
+                                                <b style="font-size:13px;">
+                                                    <span t-field="po.name"/> — <t t-out="po.x_requisition_title or 'Untitled'"/>
+                                                </b>
+                                                <br/>
+                                                <span style="font-size:10px; color:#555;">
+                                                    Vendor: <span t-field="po.partner_id"/>
+                                                    &#160;|&#160;
+                                                    Dept: <span t-field="po.x_requesting_department_id"/>
+                                                    <t t-if="po.x_requesting_committee_id">
+                                                        &#160;|&#160;
+                                                        Committee: <span t-field="po.x_requesting_committee_id"/>
+                                                    </t>
+                                                    <t t-if="po.user_id">
+                                                        &#160;|&#160;
+                                                        Requester: <span t-field="po.user_id"/>
+                                                    </t>
+                                                </span>
+                                            </td>
+                                            <td style="text-align:right; vertical-align:top; width:120px;">
+                                                <b style="font-size:14px;">
+                                                    <span t-field="po.amount_total"
+                                                          t-options='{"widget": "monetary", "display_currency": po.currency_id}'/>
+                                                </b>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+
+                                <!-- Line items -->
+                                <table style="width:100%; border-collapse:collapse;">
+                                    <thead>
+                                        <tr style="background:#eee;">
+                                            <th style="padding:4px 6px; text-align:left; border-bottom:1px solid #ccc;">Description</th>
+                                            <th style="padding:4px 6px; text-align:right; border-bottom:1px solid #ccc; width:50px;">Qty</th>
+                                            <th style="padding:4px 6px; text-align:right; border-bottom:1px solid #ccc; width:70px;">Unit Price</th>
+                                            <th style="padding:4px 6px; text-align:left; border-bottom:1px solid #ccc;">GL Account</th>
+                                            <th style="padding:4px 6px; text-align:right; border-bottom:1px solid #ccc; width:90px;">Budget Left</th>
+                                            <th style="padding:4px 6px; text-align:right; border-bottom:1px solid #ccc; width:80px;">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="po.order_line.filtered(lambda l: l.display_type or l.product_qty != 0)" t-as="line">
+                                            <tr>
+                                                <td style="padding:4px 6px; border-bottom:1px solid #eee;">
+                                                    <span t-field="line.name"/>
+                                                </td>
+                                                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">
+                                                    <span t-field="line.product_qty"/>
+                                                </td>
+                                                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">
+                                                    <span t-field="line.price_unit"/>
+                                                </td>
+                                                <td style="padding:4px 6px; border-bottom:1px solid #eee; font-size:10px;">
+                                                    <span t-if="line.x_elks_account_id" t-field="line.x_elks_account_id"/>
+                                                    <span t-if="not line.x_elks_account_id" style="color:#999;">—</span>
+                                                </td>
+                                                <td t-att-style="'padding:4px 6px; border-bottom:1px solid #eee; text-align:right;' + (' color:#c00; font-weight:bold;' if line.x_over_budget else '')">
+                                                    <t t-if="line.x_budget_line_id">
+                                                        <span t-field="line.x_budget_available"
+                                                              t-options='{"widget": "monetary", "display_currency": po.currency_id}'/>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span style="color:#999;">—</span>
+                                                    </t>
+                                                </td>
+                                                <td t-att-style="'padding:4px 6px; border-bottom:1px solid #eee; text-align:right;' + (' color:#c00; font-weight:bold;' if line.x_over_budget else '')">
+                                                    <span t-field="line.price_subtotal"
+                                                          t-options='{"widget": "monetary", "display_currency": po.currency_id}'/>
+                                                </td>
+                                            </tr>
+                                        </t>
+                                    </tbody>
+                                </table>
+
+                                <!-- Notes / terms -->
+                                <div t-if="po.notes" style="padding:5px 8px; font-size:10px; color:#555; border-top:1px solid #eee; background:#fafafa;">
+                                    <b>Notes:</b> <span t-field="po.notes"/>
+                                </div>
+
+                                <!-- Vote line -->
+                                <div style="padding:5px 8px; font-size:10px; border-top:1px solid #eee;">
+                                    <b>Vote:</b>
+                                    &#160;&#160;<span style="border:1px solid #666; padding:0 8px;">YES</span>
+                                    &#160;&#160;<span style="border:1px solid #666; padding:0 8px;">NO</span>
+                                    &#160;&#160;<span style="border:1px solid #666; padding:0 8px;">ABSTAIN</span>
+                                    &#160;&#160;&#160;&#160;
+                                    <b>Vote count:</b>
+                                    &#160;Y ___ &#160;N ___ &#160;Abs ___
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+
+                    <!-- Footer signature line -->
+                    <div style="margin-top:24px; font-size:10px;">
+                        <table style="width:100%;">
+                            <tr>
+                                <td style="width:50%; border-top:1px solid #333; padding-top:4px;">
+                                    <t t-if="queue_state == 'board'">Board Chair Signature</t>
+                                    <t t-if="queue_state == 'floor'">Presiding Officer Signature</t>
+                                </td>
+                                <td style="width:10%;"></td>
+                                <td style="width:40%; border-top:1px solid #333; padding-top:4px;">
+                                    Date
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ============================================================
+         Server actions — search POs by state and pipe to the report
+         Reached from the Reports menu items below.
+         ============================================================ -->
+    <record id="server_action_print_board_queue" model="ir.actions.server">
+        <field name="name">Print Board Approval Queue</field>
+        <field name="model_id" ref="purchase.model_purchase_order"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[
+board_pos = env['purchase.order'].search(
+    [('x_approval_state', '=', 'board')],
+    order='x_requesting_department_id, name',
+)
+if not board_pos:
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': 'Nothing in Board Queue',
+            'message': 'No requisitions are currently awaiting Board approval.',
+            'type': 'warning',
+            'sticky': False,
+        },
+    }
+else:
+    action = env.ref('elkssecretary.action_report_board_queue').report_action(
+        board_pos,
+        data={'queue_name': 'Board Approval Queue', 'queue_state': 'board'},
+    )
+]]></field>
+    </record>
+
+    <record id="server_action_print_floor_queue" model="ir.actions.server">
+        <field name="name">Print Floor Approval Queue</field>
+        <field name="model_id" ref="purchase.model_purchase_order"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[
+floor_pos = env['purchase.order'].search(
+    [('x_approval_state', '=', 'floor')],
+    order='x_requesting_department_id, name',
+)
+if not floor_pos:
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': 'Nothing in Floor Queue',
+            'message': 'No requisitions are currently awaiting Floor approval.',
+            'type': 'warning',
+            'sticky': False,
+        },
+    }
+else:
+    action = env.ref('elkssecretary.action_report_floor_queue').report_action(
+        floor_pos,
+        data={'queue_name': 'Floor Approval Queue', 'queue_state': 'floor'},
+    )
+]]></field>
+    </record>
+
+    <!-- ============================================================
+         Menu items — under Secretary → Reports
+         ============================================================ -->
+    <menuitem id="menu_report_board_queue"
+              name="Board Approval Queue"
+              parent="menu_elkssecretary_reports"
+              action="server_action_print_board_queue"
+              sequence="30"/>
+
+    <menuitem id="menu_report_floor_queue"
+              name="Floor Approval Queue"
+              parent="menu_elkssecretary_reports"
+              action="server_action_print_floor_queue"
+              sequence="40"/>
+
+</odoo>

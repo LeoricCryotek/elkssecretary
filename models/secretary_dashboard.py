@@ -75,14 +75,15 @@ class ElksSecretaryDashboard(models.TransientModel):
         "High Priority Maintenance", compute="_compute_counts",
     )
 
-    # -- Budget Transfers --
-    pending_budget_transfers = fields.Integer(
-        "Pending Budget Transfers", compute="_compute_counts",
-    )
-    pending_transfer_amount = fields.Monetary(
-        "Transfer Amount Pending",
+    # -- Meeting Money (replaces the removed Budget Transfers tile) --
+    meeting_money_project_dollars_ytd = fields.Monetary(
+        "Project $ YTD (Lodge Year)",
         compute="_compute_counts",
         currency_field='currency_id',
+    )
+    meeting_money_this_month_count = fields.Integer(
+        "Meeting Money Entries This Month",
+        compute="_compute_counts",
     )
 
     # -- Charity Reporting --
@@ -271,19 +272,29 @@ class ElksSecretaryDashboard(models.TransientModel):
                 rec.open_work_orders = 0
                 rec.high_priority_maintenance = 0
 
-            # --- Budget Transfers ---
+            # --- Meeting Money ---
+            # Lodge year = Apr 1 – Mar 31.  Sum project_dollars_amount
+            # across every meeting in the current lodge year, and count
+            # entries recorded this calendar month for the "activity"
+            # secondary metric.
             try:
-                Transfer = self.env['elks.budget.transfer']
-                draft_transfers = Transfer.search([
-                    ('state', '=', 'draft'),
-                ])
-                rec.pending_budget_transfers = len(draft_transfers)
-                rec.pending_transfer_amount = sum(
-                    draft_transfers.mapped('amount')
+                Meeting = self.env['elks.meeting.money']
+                current_ly_start = today.year if today.month >= 4 else today.year - 1
+                current_ly = f"{current_ly_start}-{current_ly_start + 1}"
+                ly_meetings = Meeting.search(
+                    [('lodge_year', '=', current_ly)]
                 )
+                rec.meeting_money_project_dollars_ytd = sum(
+                    ly_meetings.mapped('project_dollars_amount')
+                )
+                month_start = today.replace(day=1)
+                rec.meeting_money_this_month_count = Meeting.search_count([
+                    ('meeting_date', '>=', month_start),
+                    ('meeting_date', '<=', today),
+                ])
             except (KeyError, ValueError):
-                rec.pending_budget_transfers = 0
-                rec.pending_transfer_amount = 0.0
+                rec.meeting_money_project_dollars_ytd = 0.0
+                rec.meeting_money_this_month_count = 0
 
             # --- Charity Reporting ---
             # Use x_charity_task_id directly instead of the stored
@@ -490,13 +501,30 @@ class ElksSecretaryDashboard(models.TransientModel):
             ],
         }
 
-    def action_open_budget_transfers(self):
+    def action_open_meeting_money(self):
+        """Jump to the Meeting Money entries list, defaulted to the
+        current lodge year (Apr 1 – Mar 31)."""
         return {
             'type': 'ir.actions.act_window',
-            'name': 'Pending Budget Transfers',
-            'res_model': 'elks.budget.transfer',
+            'name': 'Meeting Money',
+            'res_model': 'elks.meeting.money',
             'view_mode': 'list,form',
-            'domain': [('state', '=', 'draft')],
+            'context': {'search_default_this_lodge_year': 1},
+        }
+
+    def action_open_meeting_money_this_month(self):
+        """Jump to Meeting Money entries recorded this calendar month."""
+        today = fields.Date.context_today(self)
+        month_start = today.replace(day=1)
+        return {
+            'type': 'ir.actions.act_window',
+            'name': "This Month's Meeting Money",
+            'res_model': 'elks.meeting.money',
+            'view_mode': 'list,form',
+            'domain': [
+                ('meeting_date', '>=', month_start),
+                ('meeting_date', '<=', today),
+            ],
         }
 
     def action_open_board_queue(self):

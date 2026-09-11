@@ -124,11 +124,18 @@ class ElksSecretaryDashboard(models.TransientModel):
     )
 
     def _get_delinquent_members(self):
-        """Return delinquent members for the PDF report detail list."""
+        """Return delinquent members for the PDF report detail list.
+
+        Excludes deceased members (both pending-CLMS and processed) —
+        their dues clock stopped at date of death, so they shouldn't
+        appear on the Secretary's collection list.
+        """
         today = fields.Date.context_today(self)
         return self.env['res.partner'].search([
             ('x_is_member', '=', True),
             ('x_detail_dues_paid_to_date', '<', today),
+            ('x_drop_reason', '!=', 'deceased'),
+            ('x_date_of_death', '=', False),
         ], order='name asc')
 
     def _get_department_income(self):
@@ -244,19 +251,34 @@ class ElksSecretaryDashboard(models.TransientModel):
             ])
             rec.new_volunteers_today = len(volunteers_today)
 
+            # Shared exclusion: members flagged as deceased (whether
+            # the death is still pending CLMS entry or has been
+            # processed) should NOT appear on dues counts. The
+            # deceased-pending flow keeps the contact active + as a
+            # member so it stays searchable for the floor reading,
+            # but they've stopped owing dues the moment death was
+            # recorded. Same holds for anyone with a date-of-death on
+            # file even if x_death_clms_status wasn't set (legacy
+            # data). Archived partners drop out automatically thanks
+            # to Odoo's default active_test=True.
+            _not_deceased = [
+                ('x_drop_reason', '!=', 'deceased'),
+                ('x_date_of_death', '=', False),
+            ]
+
             # --- Members with dues expiring in next 30 days ---
             expiring = Partner.search([
                 ('x_is_member', '=', True),
                 ('x_detail_dues_paid_to_date', '>=', today),
                 ('x_detail_dues_paid_to_date', '<=', in_30d),
-            ])
+            ] + _not_deceased)
             rec.members_expiring_30d = len(expiring)
 
             # --- Delinquent (dues_paid_to < today) ---
             delinquent = Partner.search([
                 ('x_is_member', '=', True),
                 ('x_detail_dues_paid_to_date', '<', today),
-            ])
+            ] + _not_deceased)
             rec.members_delinquent = len(delinquent)
 
             # --- Maintenance ---
@@ -465,10 +487,14 @@ class ElksSecretaryDashboard(models.TransientModel):
             'name': 'Dues Expiring in 30 Days',
             'res_model': 'res.partner',
             'view_mode': 'list,form',
+            # Exclude deceased members — see the count computation
+            # above for rationale.
             'domain': [
                 ('x_is_member', '=', True),
                 ('x_detail_dues_paid_to_date', '>=', today),
                 ('x_detail_dues_paid_to_date', '<=', in_30d),
+                ('x_drop_reason', '!=', 'deceased'),
+                ('x_date_of_death', '=', False),
             ],
         }
 
@@ -479,9 +505,15 @@ class ElksSecretaryDashboard(models.TransientModel):
             'name': 'Delinquent Members',
             'res_model': 'res.partner',
             'view_mode': 'list,form',
+            # Exclude deceased members. A recorded death (whether
+            # still pending CLMS or already processed) stops the
+            # dues clock on that member — they don't belong on the
+            # Secretary's collection list.
             'domain': [
                 ('x_is_member', '=', True),
                 ('x_detail_dues_paid_to_date', '<', today),
+                ('x_drop_reason', '!=', 'deceased'),
+                ('x_date_of_death', '=', False),
             ],
         }
 

@@ -491,31 +491,61 @@ class ElksLodgeMeeting(models.Model):
                 'officer_name': name,
             })
 
-    # Map short-form position (as stored on elks.officer.term) to the
-    # ceremonial label used in the Lodge meeting template and roll
-    # call.  Case-insensitive substring match against the term's
-    # position string.  The int is the traditional roll-call
-    # sequence order.
+    # Map position keyword (normalized: alphanumeric only, lowercase)
+    # to the ceremonial roll-call label + sequence.  Normalization
+    # strips underscores, dashes, and whitespace so this works whether
+    # elks.officer.term.position stores 'Exalted Ruler',
+    # 'exalted_ruler', 'exalted-ruler', or 'ExaltedRuler'.
     _OFFICER_POSITION_MAP = [
-        # (match_keyword, template_label, sequence)
-        ('exalted ruler',    'Exalted Ruler',              10),
-        ('leading knight',   'Esteemed Leading Knight',    20),
-        ('loyal knight',     'Esteemed Loyal Knight',      30),
-        ('lecturing knight', 'Esteemed Lecturing Knight',  40),
-        ('secretary',        'Lodge Secretary',            50),
-        ('treasurer',        'Treasurer',                  60),
-        ('esquire',          'Esquire',                    70),
-        ('tiler',            'Tiler',                      80),
-        ('chaplain',         'Chaplain',                   90),
-        ('inner guard',      'Inner Guard',               100),
-        ('1 year trustee',   'One Year Trustee',          110),
-        ('one year trustee', 'One Year Trustee',          110),
-        ('2 year trustee',   'Two Year Trustee',          120),
-        ('two year trustee', 'Two Year Trustee',          120),
-        ('3 year trustee',   'Three Year Trustee',        130),
-        ('three year trustee', 'Three Year Trustee',      130),
-        ('organist',         'Organist',                  140),
+        # (match_keyword_normalized, template_label, sequence)
+        ('exaltedruler',       'Exalted Ruler',              10),
+        ('leadingknight',      'Esteemed Leading Knight',    20),
+        ('loyalknight',        'Esteemed Loyal Knight',      30),
+        ('lecturingknight',    'Esteemed Lecturing Knight',  40),
+        ('secretary',          'Lodge Secretary',            50),
+        ('treasurer',          'Treasurer',                  60),
+        ('esquire',            'Esquire',                    70),
+        ('tiler',              'Tiler',                      80),
+        ('chaplain',           'Chaplain',                   90),
+        ('innerguard',         'Inner Guard',               100),
+        ('1yeartrustee',       'One Year Trustee',          110),
+        ('oneyeartrustee',     'One Year Trustee',          110),
+        ('2yeartrustee',       'Two Year Trustee',          120),
+        ('twoyeartrustee',     'Two Year Trustee',          120),
+        ('3yeartrustee',       'Three Year Trustee',        130),
+        ('threeyeartrustee',   'Three Year Trustee',        130),
+        ('organist',           'Organist',                  140),
     ]
+
+    @staticmethod
+    def _norm_pos(s):
+        """Normalize a position label: alphanumeric-only, lowercase.
+        Strips spaces, underscores, dashes so 'Exalted Ruler',
+        'exalted_ruler', 'Exalted-Ruler', 'ExaltedRuler' all become
+        'exaltedruler'."""
+        import re
+        return re.sub(r'[^a-z0-9]', '', str(s or '').lower())
+
+    @staticmethod
+    def _resolve_field_label(rec, field_name):
+        """Return a human-readable string for a field value regardless
+        of type — Char returns as-is, Many2one returns .name /
+        .display_name, Selection returns the label rather than the
+        stored value.  Returns '' if the field isn't set or resolves
+        to nothing."""
+        val = getattr(rec, field_name, False)
+        if not val:
+            return ''
+        # Many2one — get related record's name
+        if hasattr(val, 'ids') and hasattr(val, 'name'):
+            return val.name or getattr(val, 'display_name', '') or ''
+        # Selection — walk the field's selection list for the label
+        if hasattr(rec, '_fields') and field_name in rec._fields:
+            field = rec._fields[field_name]
+            if field.type == 'selection':
+                selection = dict(field.selection or [])
+                return selection.get(val, val)
+        return str(val)
 
     def _resolve_active_officer_terms(self):
         """Pull officer terms from elks.officer.term that are ACTIVE
@@ -549,22 +579,53 @@ class ElksLodgeMeeting(models.Model):
         if not terms:
             return []
 
+        # Which lodge_year field candidate exists on the model?
+        ly_field = None
+        for cand in ('lodge_year', 'lodge_year_id', 'x_lodge_year',
+                     'year', 'x_year'):
+            if cand in Term._fields:
+                ly_field = cand
+                break
+
         # Filter to only ACTIVE terms as of the meeting date.
+        # Strategy: a term is active if EITHER
+        #   • its date range covers meeting_date, OR
+        #   • its lodge_year label matches the current lodge year
+        # (both conditions are checked — a term with dates that
+        # DON'T cover meeting_date is inactive, but a term with no
+        # dates set falls back to lodge_year).
         active = []
         for t in terms:
-            # Date-range wins when both are set.
             ts = getattr(t, 'term_start', False)
             te = getattr(t, 'term_end', False)
+            date_active = None
             if ts and te:
-                if ts <= md <= te:
-                    active.append(t)
-                continue
-            # Otherwise match on lodge_year (Char or Selection)
-            ly = getattr(t, 'lodge_year', False)
-            if ly and str(ly) == lodge_year_label:
+                date_active = (ts <= md <= te)
+            elif ts and not te:
+                # Open-ended term — active if term_start has begun.
+                date_active = (ts <= md)
+            elif te and not ts:
+                date_active = (md <= te)
+
+            # Lodge-year check — using label resolution (handles
+            # M2o / Selection / Char).
+            year_active = None
+            if ly_field:
+                year_label = self._resolve_field_label(t, ly_field)
+                if year_label:
+                    year_active = (year_label.strip() == lodge_year_label)
+
+            # An active term: at least one signal is TRUE, and no
+            # signal contradicts it.  If both are unknown (None),
+            # accept it — better to over-include than to drop a
+            # sitting officer whose data isn't fully filled in.
+            signals = [s for s in (date_active, year_active)
+                       if s is not None]
+            if not signals:
+                active.append(t)  # No info — assume active
+            elif any(signals) and not any(s is False for s in signals):
                 active.append(t)
-                continue
-            # Neither dates nor lodge_year → skip (probably historical)
+            # else: at least one signal says False → inactive
 
         if not active:
             return []
@@ -576,10 +637,15 @@ class ElksLodgeMeeting(models.Model):
         # since that's who's actually sitting on meeting_date.
         slot_to_pick = {}   # position_label -> (term, seq)
         for t in active:
-            raw_pos = (getattr(t, 'position', '') or '').strip().lower()
+            # Resolve position label — Selection returns the value not
+            # the label unless we look up the field; M2o returns a
+            # recordset; Char returns as-is.  _resolve_field_label
+            # handles all three.
+            raw_pos_label = self._resolve_field_label(t, 'position')
+            norm = self._norm_pos(raw_pos_label)
             match = None
             for kw, label, seq in self._OFFICER_POSITION_MAP:
-                if kw in raw_pos:
+                if kw in norm:
                     match = (label, seq)
                     break
             if not match:

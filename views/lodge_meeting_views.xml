@@ -255,6 +255,36 @@
                                 </p>
                             </div>
                         </page>
+                        <page string="Report Log" name="report_log">
+                            <div class="alert alert-info" role="status">
+                                <strong>Audit trail.</strong>  Each row
+                                below is a source record — a death,
+                                a proposition, an event — that appeared
+                                on this meeting's agenda / minutes.
+                                Populated when you click
+                                <em>Generate Minutes</em>.  Future
+                                agendas' auto-populate skips any
+                                <em>death</em> already logged here so
+                                nothing gets read twice.  Propositions
+                                and events are audit-only — they
+                                continue to appear until they change
+                                stage or their date passes.
+                            </div>
+                            <field name="report_log_ids" nolabel="1"
+                                   readonly="1">
+                                <list>
+                                    <field name="reported_date"/>
+                                    <field name="category"/>
+                                    <field name="title"/>
+                                    <field name="resource_ref"
+                                           string="Source Record"/>
+                                    <field name="res_model"
+                                           optional="hide"/>
+                                    <field name="res_id"
+                                           optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
                         <page string="Generated Docs" name="output">
                             <group string="Agenda (pre-meeting draft)">
                                 <field name="agenda_docx"

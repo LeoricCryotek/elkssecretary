@@ -385,6 +385,20 @@ class ElksLodgeMeeting(models.Model):
              "mover, a seconder, and a pass/fail result.  Filled in "
              "during the meeting; printed in the finalized minutes.",
     )
+    # Report log: every record that gets read to the floor at this
+    # meeting (death, proposition, event, etc.) is stamped here on
+    # Generate Minutes.  Future meetings' auto-populate skips any
+    # record already in a prior meeting's log so nothing gets read
+    # twice.
+    report_log_ids = fields.One2many(
+        "elks.lodge.meeting.report.log", "meeting_id",
+        string="Records Reported at This Meeting", copy=False,
+        help="Each row records a source record (a death, a "
+             "proposition, an event) that appeared in this meeting's "
+             "agenda / minutes.  Populated on Generate Minutes.  "
+             "Future agendas won't re-list any record already in "
+             "any prior meeting's log.",
+    )
 
     # ── Output ───────────────────────────────────────────────────
     agenda_docx = fields.Binary("Generated Agenda", attachment=True)
@@ -437,21 +451,183 @@ class ElksLodgeMeeting(models.Model):
             # onto the form before the meeting.
 
     def _populate_officers(self):
-        """Populate the officer roll call from the default list.
+        """Populate the officer roll call from the CURRENT active
+        officer terms in elkscontacts (elks.officer.term), falling
+        back to the hardcoded DEFAULT_OFFICERS list only when that
+        model isn't available.
 
-        Status is intentionally left BLANK — the Secretary fills it in
-        during roll call at the meeting.  When they re-download the
-        docx after the meeting, the printed Status column will
-        reflect whatever they've marked."""
+        For each active term:
+          • Position label is mapped from the officer term's short
+            name ('Leading Knight') to the template's ceremonial form
+            ('Esteemed Leading Knight').
+          • Officer name is the linked member's name; 'VACANT' if the
+            term is flagged vacant or has no linked member.
+          • Positions are ordered in the traditional Elks roll-call
+            sequence, so template layout stays consistent regardless
+            of the term-record ID order in the DB.
+
+        Status is intentionally left BLANK — the Secretary fills it
+        in during roll call at the meeting."""
         Line = self.env['elks.lodge.meeting.officer']
+
+        # Try the elkscontacts officer terms model first.
+        term_lines = self._resolve_active_officer_terms()
+        if term_lines:
+            for i, (pos_label, officer_name, seq) in enumerate(term_lines):
+                Line.create({
+                    'meeting_id': self.id,
+                    'sequence': seq or ((i + 1) * 10),
+                    'position': pos_label,
+                    'officer_name': officer_name,
+                })
+            return
+
+        # Fallback: hardcoded defaults
         for i, (pos, name) in enumerate(DEFAULT_OFFICERS):
             Line.create({
                 'meeting_id': self.id,
                 'sequence': (i + 1) * 10,
                 'position': pos,
                 'officer_name': name,
-                # status intentionally omitted → defaults to False
             })
+
+    # Map short-form position (as stored on elks.officer.term) to the
+    # ceremonial label used in the Lodge meeting template and roll
+    # call.  Case-insensitive substring match against the term's
+    # position string.  The int is the traditional roll-call
+    # sequence order.
+    _OFFICER_POSITION_MAP = [
+        # (match_keyword, template_label, sequence)
+        ('exalted ruler',    'Exalted Ruler',              10),
+        ('leading knight',   'Esteemed Leading Knight',    20),
+        ('loyal knight',     'Esteemed Loyal Knight',      30),
+        ('lecturing knight', 'Esteemed Lecturing Knight',  40),
+        ('secretary',        'Lodge Secretary',            50),
+        ('treasurer',        'Treasurer',                  60),
+        ('esquire',          'Esquire',                    70),
+        ('tiler',            'Tiler',                      80),
+        ('chaplain',         'Chaplain',                   90),
+        ('inner guard',      'Inner Guard',               100),
+        ('1 year trustee',   'One Year Trustee',          110),
+        ('one year trustee', 'One Year Trustee',          110),
+        ('2 year trustee',   'Two Year Trustee',          120),
+        ('two year trustee', 'Two Year Trustee',          120),
+        ('3 year trustee',   'Three Year Trustee',        130),
+        ('three year trustee', 'Three Year Trustee',      130),
+        ('organist',         'Organist',                  140),
+    ]
+
+    def _resolve_active_officer_terms(self):
+        """Pull officer terms from elks.officer.term that are ACTIVE
+        as of this meeting's date.
+
+        An active term is one where:
+          • term_start <= meeting_date <= term_end, when both dates
+            are populated;
+          • OR the term's lodge_year matches the meeting's lodge
+            year (computed as YYYY-YYYY+1 where the boundary is
+            April 1 for Elks), when the dates aren't set.
+
+        Returns a list of (position_label, officer_name, sequence)
+        tuples ordered by _OFFICER_POSITION_MAP sequence, or empty
+        list if the model isn't available."""
+        try:
+            Term = self.env['elks.officer.term']
+        except (KeyError, ValueError):
+            return []
+
+        md = self.meeting_date or fields.Date.context_today(self)
+
+        # Compute Elks lodge year label like '2026-2027' — starts Apr 1.
+        try:
+            year_start = md.year if md.month >= 4 else md.year - 1
+            lodge_year_label = "%d-%d" % (year_start, year_start + 1)
+        except AttributeError:
+            lodge_year_label = ''
+
+        terms = Term.search([])
+        if not terms:
+            return []
+
+        # Filter to only ACTIVE terms as of the meeting date.
+        active = []
+        for t in terms:
+            # Date-range wins when both are set.
+            ts = getattr(t, 'term_start', False)
+            te = getattr(t, 'term_end', False)
+            if ts and te:
+                if ts <= md <= te:
+                    active.append(t)
+                continue
+            # Otherwise match on lodge_year (Char or Selection)
+            ly = getattr(t, 'lodge_year', False)
+            if ly and str(ly) == lodge_year_label:
+                active.append(t)
+                continue
+            # Neither dates nor lodge_year → skip (probably historical)
+
+        if not active:
+            return []
+
+        # Map each active term to a (label, name, seq).  Multiple
+        # terms may match the same slot (e.g. a partial-year
+        # succession — Chaplain vacant Apr 1-Jul 21, then someone
+        # takes over).  Prefer the LATEST-starting term for a slot
+        # since that's who's actually sitting on meeting_date.
+        slot_to_pick = {}   # position_label -> (term, seq)
+        for t in active:
+            raw_pos = (getattr(t, 'position', '') or '').strip().lower()
+            match = None
+            for kw, label, seq in self._OFFICER_POSITION_MAP:
+                if kw in raw_pos:
+                    match = (label, seq)
+                    break
+            if not match:
+                continue
+            label, seq = match
+            existing = slot_to_pick.get(label)
+            if existing is None:
+                slot_to_pick[label] = (t, seq)
+            else:
+                # Prefer the later-starting term as "who currently sits"
+                new_ts = getattr(t, 'term_start', False)
+                old_ts = getattr(existing[0], 'term_start', False)
+                if new_ts and (not old_ts or new_ts > old_ts):
+                    slot_to_pick[label] = (t, seq)
+
+        # Build the result rows.  For every mapped slot we include a
+        # line even if vacant, so the template's roll call still has
+        # all traditional positions.
+        result_by_seq = {}
+        for label, (t, seq) in slot_to_pick.items():
+            vacant = bool(getattr(t, 'vacant', False))
+            member = getattr(t, 'member_id', False) \
+                or getattr(t, 'partner_id', False)
+            name = ''
+            if not vacant and member and getattr(member, 'name', ''):
+                name = member.name
+            if vacant or not name:
+                name = 'VACANT'
+            result_by_seq[seq] = (label, name)
+
+        # Also include any position from the map that had NO active
+        # term at all — mark as VACANT so the roll call is
+        # complete.
+        for kw, label, seq in self._OFFICER_POSITION_MAP:
+            if seq not in result_by_seq \
+                    and label not in {v[0] for v in result_by_seq.values()}:
+                # Only add missing traditional roll-call positions;
+                # skip the duplicate keyword aliases (they share a seq).
+                already_labels = {v[0] for v in result_by_seq.values()}
+                if label not in already_labels:
+                    result_by_seq[seq] = (label, 'VACANT')
+
+        # Sort by sequence and emit.
+        rows = []
+        for seq in sorted(result_by_seq.keys()):
+            label, name = result_by_seq[seq]
+            rows.append((label, name, seq))
+        return rows
 
     def _populate_committees(self):
         """Build the committee list.
@@ -636,11 +812,11 @@ class ElksLodgeMeeting(models.Model):
         this meeting.
 
         Deaths are tracked on res.partner via x_date_of_death and
-        x_death_clms_status (same fields the Deaths — Pending CLMS
-        queue uses).  We surface anyone whose date_of_death is set,
-        who hasn't already been read on the floor at a prior meeting
-        (x_date_read_on_floor is False), and who died within the last
-        90 days as a safety window."""
+        x_death_clms_status.  We surface anyone whose date_of_death
+        is set, who hasn't already been read on the floor at a prior
+        meeting (x_date_read_on_floor is False AND not in this
+        module's report log), and who died within the last 90 days
+        as a safety window."""
         try:
             Partner = self.env['res.partner']
             if 'x_date_of_death' not in Partner._fields:
@@ -648,18 +824,212 @@ class ElksLodgeMeeting(models.Model):
         except (KeyError, ValueError):
             return
         since = self.meeting_date - timedelta(days=90)
-        deaths = Partner.with_context(active_test=False).search([
+        already_reported = self._ids_already_reported(
+            'res.partner', category='death')
+        domain = [
             ('x_date_of_death', '!=', False),
             ('x_date_of_death', '>=', since),
             ('x_date_of_death', '<=', self.meeting_date),
             ('x_date_read_on_floor', '=', False),
-        ])
+        ]
+        if already_reported:
+            domain.append(('id', 'not in', list(already_reported)))
+        deaths = Partner.with_context(active_test=False).search(domain)
         if deaths:
             lines = []
             for d in deaths:
                 dod = d.x_date_of_death
                 lines.append("• %s — %s" % (d.name, dod))
             self.deaths_of_members = "\n".join(lines)
+
+    # ══════════════════════════════════════════════════════════════
+    # Report log — track which source records have been read on the
+    # floor at which meeting, so future agendas skip them.
+    # ══════════════════════════════════════════════════════════════
+    @api.model
+    def _ids_already_reported(self, res_model, category=None):
+        """Return the set of res_ids for `res_model` that appear in
+        ANY meeting's report_log_ids (optionally filtered to a single
+        category: 'death', 'proposition', 'event').  Used by the
+        _populate_* methods to skip records already read on the
+        floor at a prior meeting."""
+        Log = self.env['elks.lodge.meeting.report.log'].sudo()
+        domain = [('res_model', '=', res_model)]
+        if category:
+            domain.append(('category', '=', category))
+        return set(Log.search(domain).mapped('res_id'))
+
+    def _log_reported_records(self):
+        """Called from action_generate_minutes.  Writes a report-log
+        entry for every source record that appeared on this meeting's
+        agenda: deaths, propositions, community events.  Idempotent
+        via a (meeting, model, id) unique-per-meeting check — pressing
+        Generate Minutes a second time won't create duplicates.
+
+        Also stamps res.partner.x_date_read_on_floor for deaths so
+        the existing Deaths — Pending CLMS queue view (which shows
+        that field directly) stays in sync."""
+        Log = self.env['elks.lodge.meeting.report.log'].sudo()
+        existing_keys = set()
+        for row in self.report_log_ids:
+            existing_keys.add((row.res_model, row.res_id))
+
+        # Cache the meeting's own name once — used in the chatter
+        # note posted to each source record.
+        meeting_label = self.name or "Lodge Meeting %s" % (
+            self.meeting_date or '')
+        meeting_url = "/odoo/action-elkssecretary.action_lodge_meetings/%d" % self.id
+
+        def _add(category, res_model, res_id, title, chatter_body=None):
+            if not res_id:
+                return
+            key = (res_model, res_id)
+            if key in existing_keys:
+                return
+            Log.create({
+                'meeting_id': self.id,
+                'category': category,
+                'res_model': res_model,
+                'res_id': res_id,
+                'title': title or '',
+                'reported_date': self.meeting_date,
+            })
+            existing_keys.add(key)
+            # Post a chatter note on the source record so their
+            # history sheet shows this meeting.  Silently ignored
+            # if the target model doesn't inherit mail.thread.
+            if not chatter_body:
+                cat_label = {
+                    'death':       "Read on the floor — Deaths of Members",
+                    'proposition': "Read on the floor — Membership Proposition",
+                    'event':       "Announced on the floor — Community Event",
+                    'other':       "Read on the floor",
+                }.get(category, "Read on the floor")
+                chatter_body = (
+                    '%s at <a href="%s">%s</a> '
+                    'on %s.'
+                ) % (
+                    cat_label,
+                    meeting_url,
+                    meeting_label,
+                    self.meeting_date or '',
+                )
+            try:
+                target = self.env[res_model].sudo().browse(res_id)
+                if target.exists() and hasattr(target, 'message_post'):
+                    target.message_post(body=chatter_body)
+            except (KeyError, ValueError, AttributeError):
+                pass
+
+        # ── Deaths ──────────────────────────────────────────────
+        # Re-run the same death query used at populate time so we
+        # log exactly what got printed.  Anyone the Secretary added
+        # to the text field by hand won't be in this list — that's
+        # fine, the log is for source-record tracking, not the raw
+        # text.
+        try:
+            Partner = self.env['res.partner']
+            if 'x_date_of_death' in Partner._fields:
+                since = self.meeting_date - timedelta(days=90)
+                already = self._ids_already_reported(
+                    'res.partner', category='death')
+                domain = [
+                    ('x_date_of_death', '!=', False),
+                    ('x_date_of_death', '>=', since),
+                    ('x_date_of_death', '<=', self.meeting_date),
+                    ('x_date_read_on_floor', '=', False),
+                ]
+                if already:
+                    domain.append(('id', 'not in', list(already)))
+                deaths = Partner.with_context(active_test=False).search(
+                    domain)
+                for d in deaths:
+                    _add('death', 'res.partner', d.id, d.name)
+                    # Keep the existing x_date_read_on_floor flag in
+                    # sync so the Deaths CLMS queue view still works.
+                    if not d.x_date_read_on_floor:
+                        try:
+                            d.sudo().write({
+                                'x_date_read_on_floor':
+                                    self.meeting_date,
+                            })
+                        except Exception:
+                            _logger.warning(
+                                "Could not stamp x_date_read_on_floor "
+                                "on partner %s", d.id)
+        except (KeyError, ValueError):
+            pass
+
+        # ── Propositions ────────────────────────────────────────
+        for p in self.proposition_ids:
+            # Prefer the linked application record when we have one,
+            # so a candidate isn't re-listed at every meeting until
+            # they're inducted.
+            app_ref = False
+            for path in ('application_id', 'x_application_id',
+                         'candidate_id', 'proposed_member_id',
+                         'partner_id'):
+                val = getattr(p, path, False)
+                if val and hasattr(val, 'id') and val.id:
+                    app_ref = (val._name, val.id)
+                    break
+            if app_ref:
+                model_name, rec_id = app_ref
+                _add('proposition', model_name, rec_id,
+                     p.candidate_name or '')
+            else:
+                # Fall back to logging the proposition line itself so
+                # we at least have SOMETHING to reference.
+                _add('proposition', p._name, p.id,
+                     p.candidate_name or '')
+
+            # ALSO post a chatter note on the linked partner (if
+            # any) — even if the log entry went against the
+            # application record.  That way a Secretary looking at
+            # the candidate's contact card sees this meeting in
+            # their history sheet.
+            linked_partner = False
+            for path in ('partner_id', 'proposed_member_id',
+                         'candidate_id.partner_id',
+                         'application_id.partner_id'):
+                # Walk dotted path to resolve.
+                cur = p
+                for attr in path.split('.'):
+                    cur = getattr(cur, attr, False)
+                    if not cur:
+                        break
+                if cur and getattr(cur, '_name', '') == 'res.partner' \
+                        and getattr(cur, 'id', 0):
+                    linked_partner = cur
+                    break
+            if linked_partner and (
+                    not app_ref
+                    or app_ref[0] != 'res.partner'
+                    or app_ref[1] != linked_partner.id):
+                # Post directly to the partner's chatter without
+                # creating a separate log row (log stays against
+                # the application/proposition).
+                try:
+                    linked_partner.sudo().message_post(body=(
+                        'Membership proposition read on the floor at '
+                        '<a href="%s">%s</a> on %s.'
+                    ) % (
+                        meeting_url,
+                        meeting_label,
+                        self.meeting_date or '',
+                    ))
+                except Exception:
+                    _logger.warning(
+                        "Could not post chatter to partner %s",
+                        linked_partner.id)
+
+        # ── Community events ────────────────────────────────────
+        # NOTE: events are NOT logged as "reported" — per the user's
+        # rule, upcoming events keep appearing on every agenda until
+        # their event date has passed.  The date-window filter in
+        # _populate_events (x_event_date >= meeting_date) naturally
+        # drops past events, so no reported-tracking is needed for
+        # this category.
 
     def _populate_bills_from_purchase(self):
         """Sum purchase.order amounts sitting in Floor-Vote approval
@@ -691,9 +1061,11 @@ class ElksLodgeMeeting(models.Model):
         Matches elksevent's own 'Event Bookings' action exactly:
           ('x_is_event', '=', True), ('parent_id', '=', False)
 
-        Sort: DESCENDING by x_event_date per user preference (latest
-        date at the top of the list).  Formatted as bullet points.
-        Window: today (meeting_date) through +60 days."""
+        Sort: ASCENDING by x_event_date — nearest upcoming event
+        first (Secretary reads the soonest-happening items to the
+        floor first, then works down the calendar).  Formatted as
+        bullet points.  Window: today (meeting_date) through +60
+        days."""
         try:
             Task = self.env['project.task']
             if 'x_is_event' not in Task._fields:
@@ -706,7 +1078,7 @@ class ElksLodgeMeeting(models.Model):
             ('x_event_date', '>=', self.meeting_date),
             ('x_event_date', '<=',
                 self.meeting_date + timedelta(days=60)),
-        ], order='x_event_date desc', limit=50)
+        ], order='x_event_date asc', limit=50)
         if upcoming:
             lines = []
             for ev in upcoming:
@@ -835,6 +1207,10 @@ class ElksLodgeMeeting(models.Model):
         })
         # Sync Meeting Money at the same time so YTD totals stay right
         self._sync_meeting_money_record()
+        # Stamp every record that appeared on this agenda as
+        # "reported at meeting X" — future meetings' auto-populate
+        # skips anything already logged so nothing gets read twice.
+        self._log_reported_records()
         self.message_post(body=_(
             "Meeting minutes generated by %s.") % self.env.user.name)
         return {
@@ -2136,3 +2512,84 @@ class ElksLodgeMeetingProposition(models.Model):
              "leave blank for candidates being balloted whose fate "
              "is unknown until the vote.",
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Report log — audit trail of records read on the floor
+# ═══════════════════════════════════════════════════════════════════
+class ElksLodgeMeetingReportLog(models.Model):
+    """One row per source record that appeared on a meeting's agenda
+    / minutes.  Written on Generate Minutes.
+
+    Purpose:
+      • DEATHS: prevents the same partner from being read on the
+        floor at a second meeting — future _populate_deaths() calls
+        skip any partner already in this log.  Also mirrors the flag
+        to res.partner.x_date_read_on_floor so the existing Deaths
+        CLMS queue view stays accurate.
+      • PROPOSITIONS: audit trail only.  Candidates legitimately
+        re-appear at successive meetings as they progress from
+        proposed → balloting → elected, so the log does NOT filter
+        them out — it just records which meeting they showed up at.
+      • EVENTS: not logged.  Upcoming events keep showing on every
+        agenda until their event date has passed, at which point the
+        date-window filter drops them naturally."""
+    _name = "elks.lodge.meeting.report.log"
+    _description = "Lodge Meeting Report Log"
+    _order = "reported_date desc, id desc"
+    _rec_name = "title"
+
+    meeting_id = fields.Many2one(
+        "elks.lodge.meeting", required=True,
+        ondelete="cascade", index=True,
+        string="Meeting",
+    )
+    reported_date = fields.Date(
+        "Reported On", index=True,
+        help="The date of the meeting where this record was read "
+             "on the floor.",
+    )
+    category = fields.Selection([
+        ('death',       'Death'),
+        ('proposition', 'Membership Proposition'),
+        ('event',       'Community Event'),
+        ('other',       'Other'),
+    ], required=True, index=True)
+    res_model = fields.Char(
+        "Source Model", required=True, index=True,
+        help="Odoo model of the source record (e.g. 'res.partner', "
+             "'elks.membership.application').",
+    )
+    res_id = fields.Integer(
+        "Source Record ID", required=True, index=True,
+        help="Database ID of the source record.",
+    )
+    title = fields.Char(
+        "Record Title",
+        help="Snapshot of the source record's name at the time it "
+             "was read — kept even if the source record is later "
+             "renamed or deleted.",
+    )
+    resource_ref = fields.Reference(
+        selection=[
+            ('res.partner', 'Contact'),
+            ('elks.membership.application', 'Membership Application'),
+            ('project.task', 'Event / Task'),
+        ],
+        string="Open Record", compute="_compute_resource_ref",
+        help="Click through to the source record.",
+    )
+
+    _sql_constraints = [
+        ('uniq_meeting_record',
+         'unique(meeting_id, res_model, res_id)',
+         "This record has already been logged for this meeting."),
+    ]
+
+    @api.depends("res_model", "res_id")
+    def _compute_resource_ref(self):
+        for rec in self:
+            if rec.res_model and rec.res_id:
+                rec.resource_ref = "%s,%d" % (rec.res_model, rec.res_id)
+            else:
+                rec.resource_ref = False

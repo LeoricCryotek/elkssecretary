@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     "name": "Elks Secretary — Daily Report, CLMS Queue & Treasury",
-    "version": "19.0.2.46",
+    "version": "19.0.2.48",
     "category": "Productivity",
     "summary": "Daily Secretary dashboard, CLMS processing queue, and "
                "Treasury house cash management (till counts, safe counts, "

@@ -491,76 +491,101 @@ class ElksLodgeMeeting(models.Model):
                 'officer_name': name,
             })
 
-    # Map position keyword (normalized: alphanumeric only, lowercase)
-    # to the ceremonial roll-call label + sequence.  Normalization
-    # strips underscores, dashes, and whitespace so this works whether
-    # elks.officer.term.position stores 'Exalted Ruler',
-    # 'exalted_ruler', 'exalted-ruler', or 'ExaltedRuler'.
-    _OFFICER_POSITION_MAP = [
-        # (match_keyword_normalized, template_label, sequence)
-        ('exaltedruler',       'Exalted Ruler',              10),
-        ('leadingknight',      'Esteemed Leading Knight',    20),
-        ('loyalknight',        'Esteemed Loyal Knight',      30),
-        ('lecturingknight',    'Esteemed Lecturing Knight',  40),
-        ('secretary',          'Lodge Secretary',            50),
-        ('treasurer',          'Treasurer',                  60),
-        ('esquire',            'Esquire',                    70),
-        ('tiler',              'Tiler',                      80),
-        ('chaplain',           'Chaplain',                   90),
-        ('innerguard',         'Inner Guard',               100),
-        ('1yeartrustee',       'One Year Trustee',          110),
-        ('oneyeartrustee',     'One Year Trustee',          110),
-        ('2yeartrustee',       'Two Year Trustee',          120),
-        ('twoyeartrustee',     'Two Year Trustee',          120),
-        ('3yeartrustee',       'Three Year Trustee',        130),
-        ('threeyeartrustee',   'Three Year Trustee',        130),
-        ('organist',           'Organist',                  140),
-    ]
-
-    @staticmethod
-    def _norm_pos(s):
-        """Normalize a position label: alphanumeric-only, lowercase.
-        Strips spaces, underscores, dashes so 'Exalted Ruler',
-        'exalted_ruler', 'Exalted-Ruler', 'ExaltedRuler' all become
-        'exaltedruler'."""
-        import re
-        return re.sub(r'[^a-z0-9]', '', str(s or '').lower())
+    # Map elks.officer.term.position INTERNAL CODES (from the
+    # elkscontacts module's Selection field) directly to the
+    # ceremonial roll-call label + sequence.  Confirmed against
+    # /Users/dannyadmin/Documents/GitHub/elkscontacts/models/
+    # elks_officer_term.py:OFFICER_POSITIONS.
+    _OFFICER_POSITION_MAP = {
+        # code                 (template_label,                sequence)
+        'exalted_ruler':       ('Exalted Ruler',                 10),
+        'leading_knight':      ('Esteemed Leading Knight',       20),
+        'loyal_knight':        ('Esteemed Loyal Knight',         30),
+        'lecturing_knight':    ('Esteemed Lecturing Knight',     40),
+        'secretary':           ('Lodge Secretary',               50),
+        'treasurer':           ('Treasurer',                     60),
+        'esquire':             ('Esquire',                       70),
+        'tiler':               ('Tiler',                         80),
+        'chaplain':            ('Chaplain',                      90),
+        'inner_guard':         ('Inner Guard',                  100),
+        'trustee1y':           ('One Year Trustee',             110),
+        'trustee2y':           ('Two Year Trustee',             120),
+        'trustee3y':           ('Three Year Trustee',           130),
+        'trustee4y':           ('Four Year Trustee',            140),
+        'trustee5y':           ('Five Year Trustee',            150),
+        'boardchair':          ('Board Chair',                  160),
+        'organist':            ('Organist',                     170),
+        'pianist':             ('Pianist',                      180),
+        'sergeant_at_arms':    ('Sergeant-at-Arms',             190),
+        'presiding_justice':   ('Presiding Justice',            200),
+    }
 
     @staticmethod
     def _resolve_field_label(rec, field_name):
         """Return a human-readable string for a field value regardless
-        of type — Char returns as-is, Many2one returns .name /
-        .display_name, Selection returns the label rather than the
-        stored value.  Returns '' if the field isn't set or resolves
-        to nothing."""
+        of type — Char returns as-is, Many2one returns display_name /
+        name, Selection returns the label rather than the stored
+        value.  Returns '' if the field isn't set or resolves to
+        nothing.
+
+        Odoo recordsets look truthy or falsy based on their content;
+        strings need different handling.  This tries multiple
+        strategies safely."""
+        if field_name not in rec._fields:
+            return ''
+        field = rec._fields[field_name]
         val = getattr(rec, field_name, False)
+
+        # Many2one — get related record's name via display_name
+        if field.type == 'many2one':
+            if not val:
+                return ''
+            try:
+                return (val.display_name or val.name or '').strip()
+            except AttributeError:
+                # Related model may not have display_name / name.
+                try:
+                    return str(val.id) if val else ''
+                except AttributeError:
+                    return ''
+
+        # Selection — return the display label, not the stored code.
+        if field.type == 'selection':
+            if not val:
+                return ''
+            try:
+                selection = dict(field._description_selection(rec.env))
+            except (AttributeError, TypeError):
+                selection = dict(field.selection or [])
+            return str(selection.get(val, val))
+
+        # Char / Text / Html — return as string.
         if not val:
             return ''
-        # Many2one — get related record's name
-        if hasattr(val, 'ids') and hasattr(val, 'name'):
-            return val.name or getattr(val, 'display_name', '') or ''
-        # Selection — walk the field's selection list for the label
-        if hasattr(rec, '_fields') and field_name in rec._fields:
-            field = rec._fields[field_name]
-            if field.type == 'selection':
-                selection = dict(field.selection or [])
-                return selection.get(val, val)
-        return str(val)
+        return str(val).strip()
 
     def _resolve_active_officer_terms(self):
-        """Pull officer terms from elks.officer.term that are ACTIVE
-        as of this meeting's date.
+        """Pull current officer terms from elks.officer.term using
+        the SAME query pattern the elkscontacts /contactus page uses
+        (see elkscontacts/controllers/website_officers.py), so the
+        meeting agenda's Officer Roll Call matches the public
+        contact-us page byte-for-byte.
 
-        An active term is one where:
-          • term_start <= meeting_date <= term_end, when both dates
-            are populated;
-          • OR the term's lodge_year matches the meeting's lodge
-            year (computed as YYYY-YYYY+1 where the boundary is
-            April 1 for Elks), when the dates aren't set.
+        Query:
+            OfficerTerm.search([
+                ('lodge_year', '=', current_year_label),
+                ('active', '=', True),
+                ('x_is_vacated', '=', False),
+            ])
+
+        We drop the contact-us page's show_on_website filter so
+        internal roll-call positions (that aren't shown publicly)
+        still appear on the meeting form.
 
         Returns a list of (position_label, officer_name, sequence)
-        tuples ordered by _OFFICER_POSITION_MAP sequence, or empty
-        list if the model isn't available."""
+        tuples ordered by _OFFICER_POSITION_MAP sequence.  Every
+        known roll-call slot is emitted — missing slots print as
+        VACANT so the template layout stays consistent."""
         try:
             Term = self.env['elks.officer.term']
         except (KeyError, ValueError):
@@ -569,120 +594,95 @@ class ElksLodgeMeeting(models.Model):
         md = self.meeting_date or fields.Date.context_today(self)
 
         # Compute Elks lodge year label like '2026-2027' — starts Apr 1.
+        # Matches the same computation in
+        # elkscontacts.controllers.website_officers.
         try:
             year_start = md.year if md.month >= 4 else md.year - 1
             lodge_year_label = "%d-%d" % (year_start, year_start + 1)
         except AttributeError:
-            lodge_year_label = ''
-
-        terms = Term.search([])
-        if not terms:
             return []
 
-        # Which lodge_year field candidate exists on the model?
-        ly_field = None
-        for cand in ('lodge_year', 'lodge_year_id', 'x_lodge_year',
-                     'year', 'x_year'):
-            if cand in Term._fields:
-                ly_field = cand
-                break
+        # Same domain as /contactus, minus show_on_website (internal
+        # positions still need to appear on the roll call).
+        domain = [
+            ('lodge_year', '=', lodge_year_label),
+            ('active', '=', True),
+        ]
+        # x_is_vacated may not exist on older DBs — guard for it.
+        if 'x_is_vacated' in Term._fields:
+            domain.append(('x_is_vacated', '=', False))
 
-        # Filter to only ACTIVE terms as of the meeting date.
-        # Strategy: a term is active if EITHER
-        #   • its date range covers meeting_date, OR
-        #   • its lodge_year label matches the current lodge year
-        # (both conditions are checked — a term with dates that
-        # DON'T cover meeting_date is inactive, but a term with no
-        # dates set falls back to lodge_year).
-        active = []
-        for t in terms:
-            ts = getattr(t, 'term_start', False)
-            te = getattr(t, 'term_end', False)
-            date_active = None
-            if ts and te:
-                date_active = (ts <= md <= te)
-            elif ts and not te:
-                # Open-ended term — active if term_start has begun.
-                date_active = (ts <= md)
-            elif te and not ts:
-                date_active = (md <= te)
-
-            # Lodge-year check — using label resolution (handles
-            # M2o / Selection / Char).
-            year_active = None
-            if ly_field:
-                year_label = self._resolve_field_label(t, ly_field)
-                if year_label:
-                    year_active = (year_label.strip() == lodge_year_label)
-
-            # An active term: at least one signal is TRUE, and no
-            # signal contradicts it.  If both are unknown (None),
-            # accept it — better to over-include than to drop a
-            # sitting officer whose data isn't fully filled in.
-            signals = [s for s in (date_active, year_active)
-                       if s is not None]
-            if not signals:
-                active.append(t)  # No info — assume active
-            elif any(signals) and not any(s is False for s in signals):
-                active.append(t)
-            # else: at least one signal says False → inactive
+        active = Term.search(domain, order='position')
 
         if not active:
+            _logger.info(
+                "elkssecretary: no active elks.officer.term records "
+                "for lodge year %s.",
+                lodge_year_label,
+            )
             return []
 
-        # Map each active term to a (label, name, seq).  Multiple
-        # terms may match the same slot (e.g. a partial-year
-        # succession — Chaplain vacant Apr 1-Jul 21, then someone
-        # takes over).  Prefer the LATEST-starting term for a slot
-        # since that's who's actually sitting on meeting_date.
+        # Map each active term to a (label, name, seq) using its
+        # internal Selection code.
         slot_to_pick = {}   # position_label -> (term, seq)
+        unmatched_samples = []
         for t in active:
-            # Resolve position label — Selection returns the value not
-            # the label unless we look up the field; M2o returns a
-            # recordset; Char returns as-is.  _resolve_field_label
-            # handles all three.
-            raw_pos_label = self._resolve_field_label(t, 'position')
-            norm = self._norm_pos(raw_pos_label)
-            match = None
-            for kw, label, seq in self._OFFICER_POSITION_MAP:
-                if kw in norm:
-                    match = (label, seq)
-                    break
+            code = t.position  # internal Selection code
+            if not code:
+                continue
+            match = self._OFFICER_POSITION_MAP.get(code)
             if not match:
+                # Not in the roll-call map (e.g. delegates, past
+                # officers, honorifics) — skip silently.  Only log
+                # a warning for codes that look like they SHOULD be
+                # in the roll call.
+                if len(unmatched_samples) < 8:
+                    unmatched_samples.append(code)
                 continue
             label, seq = match
+
+            # If two terms map to the same slot (partial-year
+            # succession), prefer the one whose date_start is
+            # later — that's the person currently sitting.
             existing = slot_to_pick.get(label)
             if existing is None:
                 slot_to_pick[label] = (t, seq)
             else:
-                # Prefer the later-starting term as "who currently sits"
-                new_ts = getattr(t, 'term_start', False)
-                old_ts = getattr(existing[0], 'term_start', False)
-                if new_ts and (not old_ts or new_ts > old_ts):
+                old_ds = getattr(existing[0], 'date_start', False)
+                new_ds = getattr(t, 'date_start', False)
+                if new_ds and (not old_ds or new_ds > old_ds):
                     slot_to_pick[label] = (t, seq)
 
-        # Build the result rows.  For every mapped slot we include a
-        # line even if vacant, so the template's roll call still has
-        # all traditional positions.
+        if unmatched_samples:
+            _logger.info(
+                "elkssecretary: %d officer term position codes not "
+                "in _OFFICER_POSITION_MAP (skipped, not read on "
+                "roll call): %s.",
+                len(unmatched_samples),
+                unmatched_samples,
+            )
+
+        # Build the result rows.  Every roll-call slot is emitted,
+        # so a position with no active term prints as VACANT.
         result_by_seq = {}
         for label, (t, seq) in slot_to_pick.items():
-            vacant = bool(getattr(t, 'vacant', False))
-            member = getattr(t, 'member_id', False) \
-                or getattr(t, 'partner_id', False)
+            member = getattr(t, 'partner_id', False)
             name = ''
-            if not vacant and member and getattr(member, 'name', ''):
-                name = member.name
-            if vacant or not name:
+            if member:
+                try:
+                    name = (member.name
+                            or member.display_name or '').strip()
+                except AttributeError:
+                    name = ''
+            if not name:
                 name = 'VACANT'
             result_by_seq[seq] = (label, name)
 
-        # Also include any position from the map that had NO active
-        # term at all — mark as VACANT so the roll call is
-        # complete.
-        for kw, label, seq in self._OFFICER_POSITION_MAP:
+        # Emit VACANT lines for any roll-call slot with no matching
+        # term at all — keeps the traditional roll call complete.
+        for code, (label, seq) in self._OFFICER_POSITION_MAP.items():
             if seq not in result_by_seq \
                     and label not in {v[0] for v in result_by_seq.values()}:
-                # Only add missing traditional roll-call positions;
                 # skip the duplicate keyword aliases (they share a seq).
                 already_labels = {v[0] for v in result_by_seq.values()}
                 if label not in already_labels:

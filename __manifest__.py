@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     "name": "Elks Secretary — Daily Report, CLMS Queue & Treasury",
-    "version": "19.0.2.18",
+    "version": "19.0.2.42",
     "category": "Productivity",
     "summary": "Daily Secretary dashboard, CLMS processing queue, and "
                "Treasury house cash management (till counts, safe counts, "
@@ -60,9 +60,17 @@ Sections
         "views/hr_employee_views.xml",
         "views/product_template_views.xml",
         "wizard/clover_import_wizard_views.xml",
+        "views/lodge_meeting_views.xml",
         "views/elkssecretary_menus.xml",
         "report/approval_queue_reports.xml",
     ],
+    # NB: python-docx is used by the Lodge Meeting Agenda feature to
+    # fill the Word template with meeting data.  NOT declared as an
+    # external_dependency so a missing package doesn't block the whole
+    # module from installing.  The import is guarded in
+    # models/lodge_meeting.py and the "Download Agenda (Word)" button
+    # raises a friendly UserError if the package isn't on the server.
+    # Install with:  pip install python-docx  (then restart Odoo).
     "installable": True,
     "application": True,
 }

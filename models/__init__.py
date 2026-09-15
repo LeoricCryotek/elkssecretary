@@ -11,3 +11,4 @@ from . import area
 from . import area_pnl
 from . import hr_employee
 from . import product_template
+from . import lodge_meeting

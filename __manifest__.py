@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     "name": "Elks Secretary — Daily Report, CLMS Queue & Treasury",
-    "version": "19.0.2.48",
+    "version": "19.0.2.50",
     "category": "Productivity",
     "summary": "Daily Secretary dashboard, CLMS processing queue, and "
                "Treasury house cash management (till counts, safe counts, "
@@ -73,4 +73,9 @@ Sections
     # Install with:  pip install python-docx  (then restart Odoo).
     "installable": True,
     "application": True,
+    # Runs the Alphabetize-top-level-menus logic every time
+    # elkssecretary is installed OR upgraded, so new modules
+    # added later don't force a manual trip to Tools >
+    # Alphabetize App Menus.  Odoo 19 passes an env to the hook.
+    "post_init_hook": "post_init_hook",
 }

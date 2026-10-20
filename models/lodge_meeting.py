@@ -1775,8 +1775,14 @@ class ElksLodgeMeeting(models.Model):
             # Officer roll call: Position / Officer / Status
             if ("position" in header_text and "officer" in header_text
                     and "status" in header_text):
-                # Officer rows are pre-filled with names + blank status.
-                # We just overwrite the Status column for present/absent.
+                # The template has officer NAMES baked into the roster
+                # (e.g. 'Alice Gwinn' for Chaplain, 'Mike Miltenberger'
+                # for Treasurer).  Those must be overwritten with the
+                # live officer_ids data pulled from elks.officer.term,
+                # otherwise the printed agenda shows last year's
+                # officers.  We overwrite BOTH the officer-name column
+                # AND the status column based on each meeting row's
+                # position match.
                 positions_map = {
                     o.position.lower(): o for o in self.officer_ids
                 }
@@ -1784,10 +1790,21 @@ class ElksLodgeMeeting(models.Model):
                     key = row.cells[0].text.strip().lower()
                     officer = positions_map.get(key)
                     if officer:
-                        # Overwrite status cell
-                        self._set_cell_text(
-                            row.cells[2], officer._status_label()
-                        )
+                        # Overwrite officer-name cell with the live
+                        # roster — handles title changes (Michael vs
+                        # Mike), succession (Alice Gwinn → VACANT),
+                        # and new terms (Mike Gwinn → Gregory D Lind).
+                        if len(row.cells) >= 2:
+                            self._set_cell_text(
+                                row.cells[1],
+                                officer.officer_name or '',
+                            )
+                        # Overwrite status cell with marked status.
+                        if len(row.cells) >= 3:
+                            self._set_cell_text(
+                                row.cells[2],
+                                officer._status_label(),
+                            )
                 continue
 
             # Committee reports: Committee / Chairperson / Report

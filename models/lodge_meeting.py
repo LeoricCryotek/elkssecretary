@@ -337,14 +337,48 @@ class ElksLodgeMeeting(models.Model):
                 sum(rec.bill_ids.mapped('amount_total'))
                 + sum(rec.manual_bill_ids.mapped('amount'))
             )
+    # QuickBooks Treasurer's Report splits Assets into Current + Fixed
+    # and prints a single combined "Liabilities and Equity" line.
+    # The module accepts both formats:
+    #
+    #   • Enter Current Assets + Fixed Assets → Total Assets auto-sums.
+    #     OR type the Total Assets directly if that's all you have.
+    #   • Enter Liabilities and Equity as a single combined value
+    #     (matching the QuickBooks report), OR enter Liabilities and
+    #     Equity separately.  Whichever is set wins when the docx
+    #     prints the Treasurer's Report block.
+    current_assets_amount = fields.Monetary(
+        "Current Assets", currency_field="currency_id",
+        help="From the Treasurer's Report — the 'Current Assets' row.",
+    )
+    fixed_assets_amount = fields.Monetary(
+        "Fixed Assets", currency_field="currency_id",
+        help="From the Treasurer's Report — the 'Fixed Assets' row.",
+    )
     assets_amount = fields.Monetary(
-        "Assets", currency_field="currency_id",
+        "Total Assets", currency_field="currency_id",
+        compute="_compute_assets_amount", store=True, readonly=False,
+        help="Auto-sums Current + Fixed Assets.  You can type over "
+             "this if your report only shows the Total.",
+    )
+    liabilities_equity_combined_amount = fields.Monetary(
+        "Liabilities and Equity (combined)",
+        currency_field="currency_id",
+        help="The merged 'Liabilities and Equity' line from the "
+             "QuickBooks-style Treasurer's Report.  Enter this if "
+             "your report doesn't split Liabilities and Equity "
+             "separately.  Takes precedence over the individual "
+             "Liabilities + Equity fields on the printed agenda.",
     )
     liabilities_amount = fields.Monetary(
-        "Liabilities", currency_field="currency_id",
+        "Liabilities (separate)", currency_field="currency_id",
+        help="Only used when the combined Liabilities & Equity "
+             "field above is blank.",
     )
     equity_amount = fields.Monetary(
-        "Equity", currency_field="currency_id",
+        "Equity (separate)", currency_field="currency_id",
+        help="Only used when the combined Liabilities & Equity "
+             "field above is blank.",
     )
     total_le_amount = fields.Monetary(
         "Total Liabilities & Equity",
@@ -422,13 +456,35 @@ class ElksLodgeMeeting(models.Model):
                 if rec.meeting_date else _("New Meeting")
             )
 
-    @api.depends("liabilities_amount", "equity_amount")
+    @api.depends("liabilities_amount", "equity_amount",
+                 "liabilities_equity_combined_amount")
     def _compute_total_le(self):
         for rec in self:
-            rec.total_le_amount = (
-                (rec.liabilities_amount or 0.0)
-                + (rec.equity_amount or 0.0)
-            )
+            # Combined entry wins when set (matches the merged line
+            # on a QuickBooks-style Treasurer's Report).  Otherwise
+            # fall back to summing the separate Liabilities + Equity.
+            if rec.liabilities_equity_combined_amount:
+                rec.total_le_amount = \
+                    rec.liabilities_equity_combined_amount
+            else:
+                rec.total_le_amount = (
+                    (rec.liabilities_amount or 0.0)
+                    + (rec.equity_amount or 0.0)
+                )
+
+    @api.depends("current_assets_amount", "fixed_assets_amount")
+    def _compute_assets_amount(self):
+        """Auto-sum Current + Fixed into Total Assets.  readonly=False
+        on the field so the Secretary can still type over the total
+        if only an aggregate figure is available."""
+        for rec in self:
+            if rec.current_assets_amount or rec.fixed_assets_amount:
+                rec.assets_amount = (
+                    (rec.current_assets_amount or 0.0)
+                    + (rec.fixed_assets_amount or 0.0)
+                )
+            # If both split fields are blank, leave assets_amount
+            # untouched so a manually-entered Total Assets stays.
 
     # ── Auto-population from other modules ────────────────────────
     def _populate_from_system(self):
@@ -1553,13 +1609,30 @@ class ElksLodgeMeeting(models.Model):
                 "Bills of: %s" % _money(self.bills_amount),
             "Assets: $__________":
                 "Assets: %s" % _money(self.assets_amount),
-            "Liability: $__________":
-                "Liability: %s" % _money(self.liabilities_amount),
-            "Equity: $__________":
-                "Equity: %s" % _money(self.equity_amount),
-            "Total Liabilities & Equity: $__________":
-                "Total Liabilities & Equity: %s" %
-                _money(self.total_le_amount),
+            # When the Secretary has entered a combined
+            # "Liabilities and Equity" value (matching the QuickBooks
+            # Treasurer's Report layout), collapse the three separate
+            # template lines into one — print the combined figure on
+            # the Liabilities row and blank out Equity + Total.
+            # Otherwise keep the traditional three-row layout with
+            # separate Liability / Equity / Total.
+            "Liability: $__________": (
+                "Liabilities & Equity: %s" %
+                _money(self.liabilities_equity_combined_amount)
+                if self.liabilities_equity_combined_amount
+                else "Liability: %s" % _money(self.liabilities_amount)
+            ),
+            "Equity: $__________": (
+                ""  # suppressed when combined is used
+                if self.liabilities_equity_combined_amount
+                else "Equity: %s" % _money(self.equity_amount)
+            ),
+            "Total Liabilities & Equity: $__________": (
+                ""  # suppressed; combined line already prints the total
+                if self.liabilities_equity_combined_amount
+                else "Total Liabilities & Equity: %s" %
+                _money(self.total_le_amount)
+            ),
             "Motion to pay the bills was made by ________ and seconded by _________.":
                 "Motion to pay the bills was made by %s and seconded by %s." % (
                     self.bills_motion_by or "________",

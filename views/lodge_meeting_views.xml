@@ -70,16 +70,34 @@
                     </group>
 
                     <group string="Treasurer's Report">
-                        <group>
+                        <group string="Assets">
+                            <field name="current_assets_amount"/>
+                            <field name="fixed_assets_amount"/>
+                            <field name="assets_amount"
+                                   string="Total Assets"
+                                   help="Auto-sums Current + Fixed above. You can type over this if your report shows only an aggregate."/>
                             <field name="bills_amount"/>
-                            <field name="assets_amount"/>
-                            <field name="liabilities_amount"/>
                         </group>
-                        <group>
-                            <field name="equity_amount"/>
-                            <field name="total_le_amount" readonly="1"/>
-                            <field name="bills_motion_by"/>
-                            <field name="bills_seconded_by"/>
+                        <group string="Liabilities &amp; Equity">
+                            <field name="liabilities_equity_combined_amount"
+                                   string="Liabilities and Equity (combined)"/>
+                            <div colspan="2" class="text-muted small">
+                                — OR enter them separately below —
+                            </div>
+                            <field name="liabilities_amount"
+                                   string="Liabilities"/>
+                            <field name="equity_amount"
+                                   string="Equity"/>
+                            <field name="total_le_amount" readonly="1"
+                                   string="Total Liabilities &amp; Equity"/>
+                        </group>
+                        <group string="Motion to Pay Bills" colspan="2">
+                            <group>
+                                <field name="bills_motion_by"/>
+                            </group>
+                            <group>
+                                <field name="bills_seconded_by"/>
+                            </group>
                         </group>
                     </group>
 
